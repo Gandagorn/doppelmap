@@ -1,0 +1,5 @@
+numpy
+scikit-learn
+umap-learn
+pillow>=10.1
+pytest
