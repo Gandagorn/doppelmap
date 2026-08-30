@@ -432,15 +432,25 @@ async function bootstrap() {
   });
 
   await loadLevel(Number(popularitySlider.value));
-  if (initialPersonName) {
-    const match = data.nodes.find((n) => n.name === initialPersonName);
-    if (match) selectNode(match.id);
-  }
-  // Land on someone rather than an empty map, but only once, at startup --
-  // no ongoing auto-walk.
-  if (selection.selectedId === null) {
+  // Deferred one frame: right after `new Sigma(...)`, in the same tick,
+  // its display data (node positions in camera space) hasn't been computed
+  // by an actual render pass yet, so flyToNode's camera.animate() targets
+  // stale/default coordinates instead of the node's real position -- the
+  // camera visibly moves but doesn't end up centered on anyone. A later
+  // click/search selection never hits this because the page has already
+  // rendered at least one frame by the time a user can interact with it.
+  requestAnimationFrame(() => {
+    if (initialPersonName) {
+      const match = data.nodes.find((n) => n.name === initialPersonName);
+      if (match) {
+        selectNode(match.id);
+        return;
+      }
+    }
+    // Land on someone rather than an empty map, but only once, at startup
+    // -- no ongoing auto-walk.
     selectNode(pickRandomNodeId());
-  }
+  });
 }
 
 bootstrap().catch((err) => {
