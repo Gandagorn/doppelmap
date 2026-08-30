@@ -220,9 +220,14 @@ async function bootstrap() {
   }
 
   async function loadLevel(levelIndex: number) {
-    // A selection/search from the previous level doesn't necessarily exist
-    // in the new one -- close the sidebar and clear search rather than
-    // show something wrong.
+    // Node ids are just a per-level array index (see build_dataset.py), not
+    // stable across levels -- carry the selection over by name instead, and
+    // only actually drop it if this level filtered that person out.
+    const previouslySelectedName =
+      selection.selectedId !== null && data
+        ? (data.nodes.find((n) => n.id === selection.selectedId)?.name ?? null)
+        : null;
+
     stopWalk();
     selection.selectedId = null;
     selection.hoveredId = null;
@@ -313,6 +318,11 @@ async function bootstrap() {
 
     popularityLabelEl.textContent = LEVEL_LABELS[levelIndex];
     renderDashboard();
+
+    if (previouslySelectedName) {
+      const stillPresent = data.nodes.find((n) => n.name === previouslySelectedName);
+      if (stillPresent) selectNode(stillPresent.id);
+    }
   }
 
   window.addEventListener("keydown", (evt) => {
