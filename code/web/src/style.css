@@ -293,6 +293,9 @@ body {
   width: 160px;
   height: 160px;
   object-fit: cover;
+  /* Wikipedia thumbnails are often taller than our square box; centering
+     the crop tends to cut off the top of the head, so bias toward top. */
+  object-position: top;
   border-radius: var(--radius);
   box-shadow: var(--shadow);
 }
@@ -330,6 +333,7 @@ body {
   width: 36px;
   height: 36px;
   object-fit: cover;
+  object-position: top;
   border-radius: 50%;
   flex: none;
   background: var(--accent-soft);
@@ -353,6 +357,7 @@ body {
   width: 200px;
   height: 200px;
   object-fit: cover;
+  object-position: top;
   border-radius: var(--radius);
   box-shadow: var(--shadow);
   border: 1px solid var(--border);

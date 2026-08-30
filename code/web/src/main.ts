@@ -12,6 +12,7 @@ import type { GraphData } from "./types";
 // build_dataset.py's POPULARITY_LEVELS. Order matches the slider's 4 steps.
 const LEVEL_FILES = ["graph-all.json", "graph-top50.json", "graph-top20.json", "graph-top5.json"];
 const LEVEL_LABELS = ["Show all", "Top 50%", "Top 20%", "Top 5%"];
+const DEFAULT_LEVEL_INDEX = 2;
 
 const WALK_STEP_MS = 2000;
 
@@ -34,6 +35,13 @@ async function bootstrap() {
   const aboutPanel = document.getElementById("about-panel") as HTMLElement;
   const aboutClose = document.getElementById("about-close") as HTMLButtonElement;
   const walkToggle = document.getElementById("walk-toggle") as HTMLButtonElement;
+
+  const initialParams = new URLSearchParams(location.search);
+  const initialLevel = Number(initialParams.get("level"));
+  if (Number.isInteger(initialLevel) && initialLevel >= 0 && initialLevel < LEVEL_FILES.length) {
+    popularitySlider.value = String(initialLevel);
+  }
+  const initialPersonName = initialParams.get("person");
 
   const dataCache = new Map<number, GraphData>();
 
@@ -63,6 +71,22 @@ async function bootstrap() {
   let graph!: ReturnType<typeof buildGraphology>;
   let renderer!: Sigma;
 
+  // Reflects current state (fame level + selection) into the URL via
+  // replaceState -- no new history entry per click, but the address bar
+  // always has a link a user can copy to share exactly what they're
+  // looking at.
+  function updateUrl() {
+    const params = new URLSearchParams();
+    const level = Number(popularitySlider.value);
+    if (level !== DEFAULT_LEVEL_INDEX) params.set("level", String(level));
+    if (selection.selectedId !== null) {
+      const name = data.nodes.find((n) => n.id === selection.selectedId)?.name;
+      if (name) params.set("person", name);
+    }
+    const query = params.toString();
+    history.replaceState(null, "", query ? `?${query}` : location.pathname);
+  }
+
   function updateWalkToggleLabel() {
     walkToggle.textContent = walk.active ? "⏸ Stop Walking" : "▶ Walk the Graph";
   }
@@ -80,6 +104,7 @@ async function bootstrap() {
     if (selection.selectedId === null) {
       sidebarEl.hidden = true;
       sidebarEl.innerHTML = "";
+      updateUrl();
       return;
     }
     const info = getSidebarData(data, selection.selectedId);
@@ -130,6 +155,8 @@ async function bootstrap() {
         hoverPreview.hidden = true;
       });
     });
+
+    updateUrl();
 
     // Instant paint with the local placeholder above; swap in the real
     // photo/link once (if) it resolves. Guard against the user having
@@ -380,6 +407,10 @@ async function bootstrap() {
   });
 
   await loadLevel(Number(popularitySlider.value));
+  if (initialPersonName) {
+    const match = data.nodes.find((n) => n.name === initialPersonName);
+    if (match) selectNode(match.id);
+  }
 }
 
 bootstrap().catch((err) => {

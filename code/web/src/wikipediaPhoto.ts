@@ -33,23 +33,31 @@ export function wikipediaInfoFromApiResponse(data: unknown): WikipediaInfo {
 // fire a second request for the same name while the first is still pending.
 const cache = new Map<string, Promise<WikipediaInfo>>();
 
-async function fetchFromApi(name: string): Promise<WikipediaInfo> {
+async function queryWikipedia(extra: Record<string, string>): Promise<WikipediaInfo> {
   const params = new URLSearchParams({
     action: "query",
-    generator: "search",
-    gsrsearch: name,
-    gsrlimit: "1",
     prop: "pageimages|info",
     inprop: "url",
     format: "json",
     pithumbsize: String(THUMB_WIDTH),
     origin: "*",
+    ...extra,
   });
+  const res = await fetch(`https://en.wikipedia.org/w/api.php?${params.toString()}`);
+  if (!res.ok) return NO_INFO;
+  return wikipediaInfoFromApiResponse(await res.json());
+}
 
+async function fetchFromApi(name: string): Promise<WikipediaInfo> {
   try {
-    const res = await fetch(`https://en.wikipedia.org/w/api.php?${params.toString()}`);
-    if (!res.ok) return NO_INFO;
-    return wikipediaInfoFromApiResponse(await res.json());
+    // Try the name as an exact article title first -- our names are
+    // themselves sourced from Wikipedia, so this usually lands on the
+    // right article directly. `generator=search` ranks by relevance and
+    // can surface a different, more "notable" same-named person instead
+    // (e.g. a common name matching a more-searched-for unrelated page).
+    const exact = await queryWikipedia({ titles: name, redirects: "1" });
+    if (exact.pageUrl) return exact;
+    return await queryWikipedia({ generator: "search", gsrsearch: name, gsrlimit: "1" });
   } catch {
     return NO_INFO;
   }
