@@ -293,7 +293,7 @@ async function bootstrap() {
       }
     });
 
-    popularityLabelEl.textContent = `${LEVEL_LABELS[levelIndex]} (${data.nodes.length})`;
+    popularityLabelEl.textContent = LEVEL_LABELS[levelIndex];
     renderDashboard();
   }
 
