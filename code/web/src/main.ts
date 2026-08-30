@@ -96,6 +96,7 @@ async function bootstrap() {
 
   function updateWalkToggleLabel() {
     walkToggle.textContent = walk.active ? "⏸ Stop Walking" : "▶ Walk the Graph";
+    walkToggle.classList.toggle("walking", walk.active);
   }
 
   function stopWalk() {
@@ -190,6 +191,13 @@ async function bootstrap() {
     resultsEl.innerHTML = "";
     flyToNode(renderer, String(id));
     renderSidebar();
+    // nodeReducer/edgeReducer output is cached and only re-evaluated on
+    // refresh() -- the mouse hovering the graph triggers that incidentally
+    // (enterNode/leaveNode both call it), which is why a manual click
+    // happened to look right, but any selection made without the mouse
+    // over the destination node (search, sidebar/dashboard clicks, walk
+    // steps) left the highlight frozen on whatever it was before.
+    renderer.refresh();
   }
 
   // Manual interactions (clicking a node, a search result, a similar-list
@@ -205,7 +213,7 @@ async function bootstrap() {
     selection.selectedId = null;
     resultsEl.innerHTML = "";
     renderSidebar();
-    autoWalkIfIdle();
+    renderer.refresh();
   }
 
   function stepWalk() {
@@ -234,19 +242,6 @@ async function bootstrap() {
 
   function pickRandomNodeId(): number {
     return data.nodes[Math.floor(Math.random() * data.nodes.length)].id;
-  }
-
-  // Ambient default: whenever nothing is selected (first load, a level
-  // switch that dropped the previous selection, or an explicit deselect),
-  // start touring the map on its own rather than sitting on an empty map.
-  // Deliberately not called from inside loadLevel() itself -- an initial
-  // ?person= URL is resolved by the caller right after loadLevel resolves,
-  // and this must only run if that still left nothing selected.
-  function autoWalkIfIdle() {
-    if (selection.selectedId === null) {
-      selectNode(pickRandomNodeId());
-      startWalk();
-    }
   }
 
   function renderDashboard() {
@@ -389,9 +384,7 @@ async function bootstrap() {
   });
 
   popularitySlider.addEventListener("input", () => {
-    loadLevel(Number(popularitySlider.value))
-      .then(() => autoWalkIfIdle())
-      .catch((err) => console.error(err));
+    loadLevel(Number(popularitySlider.value)).catch((err) => console.error(err));
   });
 
   walkToggle.addEventListener("click", () => {
@@ -443,7 +436,11 @@ async function bootstrap() {
     const match = data.nodes.find((n) => n.name === initialPersonName);
     if (match) selectNode(match.id);
   }
-  autoWalkIfIdle();
+  // Land on someone rather than an empty map, but only once, at startup --
+  // no ongoing auto-walk.
+  if (selection.selectedId === null) {
+    selectNode(pickRandomNodeId());
+  }
 }
 
 bootstrap().catch((err) => {

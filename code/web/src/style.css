@@ -120,9 +120,11 @@ body {
   width: 120px;
   accent-color: var(--accent);
 }
-.fame-hint {
+.info-icon {
   color: var(--text-muted);
-  font-size: 11.5px;
+  font-size: 14px;
+  cursor: help;
+  border-bottom: 1px dotted var(--text-muted);
 }
 @media (max-width: 640px) {
   #popularity-control {
@@ -143,6 +145,13 @@ body {
 }
 .pill-btn:hover {
   background: var(--accent-soft);
+}
+.pill-btn.walking {
+  background: #d9463c;
+  color: #fff;
+}
+.pill-btn.walking:hover {
+  background: #c53b32;
 }
 #about-toggle {
   position: fixed;

@@ -19,7 +19,12 @@
       <div id="popularity-control">
         <label for="popularity-slider">Fame level: <span id="popularity-label">Top 20%</span></label>
         <input id="popularity-slider" type="range" min="0" max="3" value="2" step="1" />
-        <span class="fame-hint">→ more people</span>
+        <span
+          class="info-icon"
+          tabindex="0"
+          title="Moving this toward &quot;Show all&quot; increases how many people are shown, including less famous ones."
+          >ⓘ</span
+        >
         <button id="walk-toggle" class="pill-btn" type="button">▶ Walk the Graph</button>
       </div>
       <button id="about-toggle" class="pill-btn" type="button" aria-label="About Doppelmap">ⓘ About</button>
