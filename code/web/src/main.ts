@@ -5,6 +5,7 @@ import { searchNames } from "./search";
 import { flyToNode, getSidebarData, escapeHtml } from "./interactions";
 import { DIM_NODE_COLOR } from "./theme";
 import { fetchWikipediaPhoto } from "./wikipediaPhoto";
+import { percentileThreshold } from "./popularityFilter";
 
 async function bootstrap() {
   const data = await loadGraphData(`${import.meta.env.BASE_URL}data/graph.json`);
@@ -28,6 +29,20 @@ async function bootstrap() {
   const sidebarEl = document.getElementById("sidebar") as HTMLElement;
   const searchInput = document.getElementById("search") as HTMLInputElement;
   const resultsEl = document.getElementById("search-results") as HTMLDivElement;
+  const popularitySlider = document.getElementById("popularity-slider") as HTMLInputElement;
+  const popularityLabelEl = document.getElementById("popularity-label") as HTMLSpanElement;
+
+  const popularityById = new Map(data.nodes.map((n) => [String(n.id), n.popularity]));
+  const popularities = data.nodes.map((n) => n.popularity);
+  let popularityThreshold = percentileThreshold(popularities, Number(popularitySlider.value));
+
+  function updatePopularityLabel() {
+    const visibleCount = data.nodes.filter((n) => n.popularity >= popularityThreshold).length;
+    const sliderValue = Number(popularitySlider.value);
+    popularityLabelEl.textContent =
+      sliderValue === 0 ? `Show all (${visibleCount})` : `Top ${100 - sliderValue}% (${visibleCount})`;
+  }
+  updatePopularityLabel();
 
   function selectNode(id: number) {
     selection.selectedId = id;
@@ -103,8 +118,13 @@ async function bootstrap() {
   });
 
   renderer.setSetting("nodeReducer", (nodeId, attrs) => {
-    const mode = getDisplayMode(renderer.getCamera().ratio);
     const display = { ...attrs };
+    if ((popularityById.get(nodeId) ?? 0) < popularityThreshold) {
+      display.hidden = true;
+      return display;
+    }
+
+    const mode = getDisplayMode(renderer.getCamera().ratio);
     if (mode === "dot") display.label = "";
 
     if (selection.hoveredId !== null) {
@@ -121,14 +141,28 @@ async function bootstrap() {
 
   renderer.setSetting("edgeReducer", (edge, attrs) => {
     const display = { ...attrs };
+    const extremities = graph.extremities(edge);
+    const belowThreshold = extremities.some(
+      (id) => (popularityById.get(id) ?? 0) < popularityThreshold
+    );
+    if (belowThreshold) {
+      display.hidden = true;
+      return display;
+    }
+
     if (selection.hoveredId !== null) {
       const hoveredKey = String(selection.hoveredId);
-      const extremities = graph.extremities(edge);
       if (!extremities.includes(hoveredKey)) {
         display.hidden = true;
       }
     }
     return display;
+  });
+
+  popularitySlider.addEventListener("input", () => {
+    popularityThreshold = percentileThreshold(popularities, Number(popularitySlider.value));
+    updatePopularityLabel();
+    renderer.refresh();
   });
 
   // nodeReducer's output is cached and only re-runs on refresh() (which
@@ -149,7 +183,8 @@ async function bootstrap() {
   searchInput.addEventListener("input", () => {
     clearTimeout(debounceHandle);
     debounceHandle = setTimeout(() => {
-      const matches = searchNames(data.nodes, searchInput.value);
+      const visibleNodes = data.nodes.filter((n) => n.popularity >= popularityThreshold);
+      const matches = searchNames(visibleNodes, searchInput.value);
       resultsEl.innerHTML = "";
       for (const node of matches) {
         const item = document.createElement("div");

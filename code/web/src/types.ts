@@ -6,6 +6,7 @@ export interface GraphNode {
   deg: number;
   thumb: string;
   attr: string;
+  popularity: number;
 }
 
 export type GraphEdge = [number, number, number];

@@ -42,6 +42,30 @@ body {
 .search-result:hover {
   background: color-mix(in srgb, canvastext 10%, canvas);
 }
+#popularity-control {
+  position: fixed;
+  top: 12px;
+  left: 268px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  background: canvas;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid #8888;
+  white-space: nowrap;
+}
+#popularity-control input[type="range"] {
+  width: 120px;
+}
+@media (max-width: 640px) {
+  #popularity-control {
+    left: 12px;
+    top: 52px;
+  }
+}
 #sidebar {
   position: fixed;
   top: 0;

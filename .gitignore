@@ -4,3 +4,9 @@ dist/
 __pycache__/
 *.pyc
 .pytest_cache/
+
+# Raw per-image embedding caches (hundreds of MB, regenerable from the
+# notebook's own cache, and past GitHub's 100MB per-file limit anyway) --
+# only the aggregated data/prototypes.npz is meant to be committed.
+data/emb_store.npz
+data/emb_cache.npz

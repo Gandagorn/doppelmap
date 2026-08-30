@@ -17,7 +17,7 @@ import numpy as np
 
 from .names import CELEBRITY_NAMES
 from .embeddings import generate_synthetic_embeddings
-from .real_embeddings import load_real_embeddings
+from .real_embeddings import filter_prototypes, load_popularity, load_real_embeddings
 from .graph import build_knn, mutual_knn_edges, directed_similar_lists, mutual_degrees
 from .layout import compute_layout, normalize_coords, refine_layout_with_forceatlas2
 from .thumbnails import generate_thumbnail
@@ -33,6 +33,7 @@ def _assemble_graph(
     out_dir: Path,
     version: str,
     default_attr: str,
+    popularity_by_name: dict[str, int] | None = None,
 ) -> dict:
     names = list(embeddings_by_name.keys())
     embeddings = np.stack([embeddings_by_name[n] for n in names])
@@ -60,6 +61,7 @@ def _assemble_graph(
             "deg": deg[i],
             "thumb": thumb_rel,
             "attr": default_attr,
+            "popularity": popularity_by_name[name] if popularity_by_name else 1,
         })
 
     graph = {
@@ -98,10 +100,15 @@ def build_dataset(*, count: int, k: int, seed: int, out_dir: Path) -> dict:
 
 def build_dataset_from_embeddings(embeddings_path: Path, *, k: int, seed: int, out_dir: Path) -> dict:
     """Real dataset: load precomputed ArcFace embeddings from a .npz (see
-    real_embeddings.load_real_embeddings) -- every name the file contains is
-    used, no count cap.
+    real_embeddings.load_real_embeddings), drop thin/duplicate prototypes
+    (real_embeddings.filter_prototypes), then use every remaining name --
+    no count cap.
     """
     embeddings_by_name = load_real_embeddings(embeddings_path)
+    popularity_by_name = load_popularity(embeddings_path)
+    embeddings_by_name, popularity_by_name = filter_prototypes(
+        embeddings_by_name, popularity_by_name
+    )
     return _assemble_graph(
         embeddings_by_name,
         k=k,
@@ -109,6 +116,7 @@ def build_dataset_from_embeddings(embeddings_path: Path, *, k: int, seed: int, o
         out_dir=out_dir,
         version=f"real-{embeddings_path.stem}",
         default_attr="Placeholder avatar — real photo not yet linked",
+        popularity_by_name=popularity_by_name,
     )
 
 

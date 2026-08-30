@@ -19,8 +19,9 @@ def test_build_dataset_end_to_end(tmp_path):
     assert on_disk == graph
 
     for node in graph["nodes"]:
-        assert set(node.keys()) == {"id", "name", "x", "y", "deg", "thumb", "attr"}
+        assert set(node.keys()) == {"id", "name", "x", "y", "deg", "thumb", "attr", "popularity"}
         assert node["attr"] == "Synthetic placeholder — no real photo"
+        assert node["popularity"] == 1
         thumb_path = tmp_path / node["thumb"]
         assert thumb_path.exists()
 
@@ -42,11 +43,13 @@ def test_build_dataset_rejects_non_positive_count():
         build_dataset(count=0, k=4, seed=1, out_dir=None)
 
 
-def _write_fake_prototypes_npz(path, names):
+def _write_fake_prototypes_npz(path, names, n_used=None):
     rng = np.random.default_rng(7)
     e = rng.normal(size=(len(names), 512)).astype(np.float32)
     e /= np.linalg.norm(e, axis=1, keepdims=True)
-    np.savez(path, names=np.array(names), E=e, n_used=np.full(len(names), 10))
+    if n_used is None:
+        n_used = np.full(len(names), 10)
+    np.savez(path, names=np.array(names), E=e, n_used=n_used)
 
 
 def test_build_dataset_from_embeddings_end_to_end(tmp_path):
@@ -62,8 +65,9 @@ def test_build_dataset_from_embeddings_end_to_end(tmp_path):
     assert set(n["name"] for n in graph["nodes"]) == set(names)
 
     for node in graph["nodes"]:
-        assert set(node.keys()) == {"id", "name", "x", "y", "deg", "thumb", "attr"}
+        assert set(node.keys()) == {"id", "name", "x", "y", "deg", "thumb", "attr", "popularity"}
         assert node["attr"] == "Placeholder avatar — real photo not yet linked"
+        assert node["popularity"] == 10
         thumb_path = tmp_path / "out" / node["thumb"]
         assert thumb_path.exists()
 
@@ -80,3 +84,15 @@ def test_build_dataset_from_embeddings_uses_all_names_no_count_cap(tmp_path):
     graph = build_dataset_from_embeddings(npz_path, k=4, seed=1, out_dir=tmp_path / "out")
 
     assert graph["meta"]["count"] == 37
+
+
+def test_build_dataset_from_embeddings_drops_thin_prototypes(tmp_path):
+    names = [f"Person {i}" for i in range(10)] + ["Thin Person"]
+    n_used = np.array([10] * 10 + [2])  # "Thin Person" is below MIN_IMAGES
+    npz_path = tmp_path / "prototypes.npz"
+    _write_fake_prototypes_npz(npz_path, names, n_used=n_used)
+
+    graph = build_dataset_from_embeddings(npz_path, k=4, seed=1, out_dir=tmp_path / "out")
+
+    assert graph["meta"]["count"] == 10
+    assert "Thin Person" not in {n["name"] for n in graph["nodes"]}
