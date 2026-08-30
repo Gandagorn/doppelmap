@@ -17,10 +17,13 @@
       <input id="search" type="text" placeholder="Search a name..." autocomplete="off" />
       <div id="search-results"></div>
       <div id="popularity-control">
-        <label for="popularity-slider">Popularity: <span id="popularity-label">Top 20%</span></label>
+        <label for="popularity-slider">Fame level: <span id="popularity-label">Top 20%</span></label>
         <input id="popularity-slider" type="range" min="0" max="3" value="2" step="1" />
       </div>
-      <button id="about-toggle" type="button" aria-label="About Doppelmap">ⓘ About</button>
+      <div id="top-right-controls">
+        <button id="walk-toggle" class="pill-btn" type="button">▶ Walk the Graph</button>
+        <button id="about-toggle" class="pill-btn" type="button" aria-label="About Doppelmap">ⓘ About</button>
+      </div>
       <div id="about-panel" hidden>
         <button id="about-close" type="button" aria-label="Close">✕</button>
         <h2>About Doppelmap</h2>
@@ -34,7 +37,7 @@
         </p>
         <p>This dataset snapshot was generated on 2026-08-30.</p>
       </div>
-      <button id="dashboard-toggle" type="button" aria-label="Show most similar pairs">🏆 Top Pairs</button>
+      <button id="dashboard-toggle" class="pill-btn" type="button" aria-label="Show most similar pairs">🏆 Top Pairs</button>
       <aside id="dashboard" hidden>
         <button id="dashboard-close" type="button" aria-label="Close">✕</button>
         <h3>Most Similar Pairs</h3>

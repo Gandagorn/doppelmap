@@ -33,6 +33,7 @@ async function bootstrap() {
   const aboutToggle = document.getElementById("about-toggle") as HTMLButtonElement;
   const aboutPanel = document.getElementById("about-panel") as HTMLElement;
   const aboutClose = document.getElementById("about-close") as HTMLButtonElement;
+  const walkToggle = document.getElementById("walk-toggle") as HTMLButtonElement;
 
   const dataCache = new Map<number, GraphData>();
 
@@ -62,12 +63,17 @@ async function bootstrap() {
   let graph!: ReturnType<typeof buildGraphology>;
   let renderer!: Sigma;
 
+  function updateWalkToggleLabel() {
+    walkToggle.textContent = walk.active ? "⏸ Stop Walking" : "▶ Walk the Graph";
+  }
+
   function stopWalk() {
     walk.active = false;
     if (walk.timer !== undefined) {
       clearInterval(walk.timer);
       walk.timer = undefined;
     }
+    updateWalkToggleLabel();
   }
 
   function renderSidebar() {
@@ -95,9 +101,6 @@ async function bootstrap() {
           )
           .join("")}
       </ul>
-      <button id="walk-button" class="walk-button" type="button">
-        ${walk.active ? "⏸ Stop Walking" : "▶ Walk the Graph"}
-      </button>
     `;
     // Preload every neighbor's real photo as soon as the sidebar opens, so
     // it's already in wikipediaPhoto's cache (usually resolved outright)
@@ -126,16 +129,6 @@ async function bootstrap() {
       li.addEventListener("mouseleave", () => {
         hoverPreview.hidden = true;
       });
-    });
-
-    const walkButton = document.getElementById("walk-button") as HTMLButtonElement;
-    walkButton.addEventListener("click", () => {
-      if (walk.active) {
-        stopWalk();
-        renderSidebar();
-      } else {
-        startWalk();
-      }
     });
 
     // Instant paint with the local placeholder above; swap in the real
@@ -189,7 +182,6 @@ async function bootstrap() {
     const next = info.similar.find((s) => !walk.visited.has(s.id));
     if (!next) {
       stopWalk();
-      renderSidebar();
       return;
     }
     walk.visited.add(next.id);
@@ -200,13 +192,18 @@ async function bootstrap() {
     if (selection.selectedId === null) return;
     walk.active = true;
     walk.visited = new Set([selection.selectedId]);
+    updateWalkToggleLabel();
     stepWalk();
     walk.timer = setInterval(stepWalk, WALK_STEP_MS);
   }
 
+  function pickRandomNodeId(): number {
+    return data.nodes[Math.floor(Math.random() * data.nodes.length)].id;
+  }
+
   function renderDashboard() {
     const nodesById = new Map(data.nodes.map((n) => [n.id, n]));
-    const topPairs = [...data.edges].sort((a, b) => b[2] - a[2]).slice(0, 15);
+    const topPairs = [...data.edges].sort((a, b) => b[2] - a[2]).slice(0, 50);
     dashboardListEl.innerHTML = topPairs
       .map(([a, b, w]) => {
         const nameA = nodesById.get(a)?.name ?? "Unknown";
@@ -326,6 +323,17 @@ async function bootstrap() {
 
   popularitySlider.addEventListener("input", () => {
     loadLevel(Number(popularitySlider.value)).catch((err) => console.error(err));
+  });
+
+  walkToggle.addEventListener("click", () => {
+    if (walk.active) {
+      stopWalk();
+      return;
+    }
+    if (selection.selectedId === null) {
+      selectNode(pickRandomNodeId());
+    }
+    startWalk();
   });
 
   aboutToggle.addEventListener("click", () => {
