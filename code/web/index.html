@@ -4,6 +4,12 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Doppelmap</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
     <link rel="stylesheet" href="/src/style.css" />
   </head>
   <body>
@@ -28,12 +34,13 @@
         </p>
         <p>This dataset snapshot was generated on 2026-08-30.</p>
       </div>
-      <aside id="dashboard">
+      <button id="dashboard-toggle" type="button" aria-label="Show most similar pairs">🏆 Top Pairs</button>
+      <aside id="dashboard" hidden>
+        <button id="dashboard-close" type="button" aria-label="Close">✕</button>
         <h3>Most Similar Pairs</h3>
         <ol id="dashboard-list"></ol>
       </aside>
       <div id="graph-container"></div>
-      <img id="similar-preview" alt="" hidden />
       <aside id="sidebar" hidden></aside>
     </div>
     <script type="module" src="/src/main.ts"></script>

@@ -25,8 +25,10 @@ async function bootstrap() {
   const resultsEl = document.getElementById("search-results") as HTMLDivElement;
   const popularitySlider = document.getElementById("popularity-slider") as HTMLInputElement;
   const popularityLabelEl = document.getElementById("popularity-label") as HTMLSpanElement;
+  const dashboardToggle = document.getElementById("dashboard-toggle") as HTMLButtonElement;
+  const dashboardEl = document.getElementById("dashboard") as HTMLElement;
+  const dashboardClose = document.getElementById("dashboard-close") as HTMLButtonElement;
   const dashboardListEl = document.getElementById("dashboard-list") as HTMLOListElement;
-  const similarPreview = document.getElementById("similar-preview") as HTMLImageElement;
   const aboutToggle = document.getElementById("about-toggle") as HTMLButtonElement;
   const aboutPanel = document.getElementById("about-panel") as HTMLElement;
   const aboutClose = document.getElementById("about-close") as HTMLButtonElement;
@@ -74,17 +76,21 @@ async function bootstrap() {
       return;
     }
     const info = getSidebarData(data, selection.selectedId);
-    const localThumbSrc = `${import.meta.env.BASE_URL}data/${info.thumb}`;
+    const localThumbSrc = (thumb: string) => `${import.meta.env.BASE_URL}data/${thumb}`;
     sidebarEl.hidden = false;
     sidebarEl.innerHTML = `
-      <img id="sidebar-photo" src="${escapeHtml(localThumbSrc)}" width="160" height="160" alt="${escapeHtml(info.name)}" />
+      <img id="sidebar-photo" src="${escapeHtml(localThumbSrc(info.thumb))}" width="160" height="160" alt="${escapeHtml(info.name)}" />
       <h2>${escapeHtml(info.name)}</h2>
       <p class="attr">${escapeHtml(info.attr)}</p>
       <ul class="similar-list">
         ${info.similar
           .map(
-            (s) =>
-              `<li data-id="${s.id}" data-thumb="${escapeHtml(s.thumb)}">${escapeHtml(s.name)} — ${s.percent}</li>`
+            (s) => `
+              <li data-id="${s.id}">
+                <img class="row-thumb" src="${escapeHtml(localThumbSrc(s.thumb))}" width="36" height="36" alt="" />
+                <span class="row-name">${escapeHtml(s.name)}</span>
+                <span class="row-percent">${s.percent}</span>
+              </li>`
           )
           .join("")}
       </ul>
@@ -92,22 +98,20 @@ async function bootstrap() {
         ${walk.active ? "⏸ Stop Walking" : "▶ Walk the Graph"}
       </button>
     `;
+    // Preload every neighbor's real photo as soon as the sidebar opens, so
+    // it's already in wikipediaPhoto's cache (usually resolved outright)
+    // by the time the user looks at or clicks one of these rows.
     sidebarEl.querySelectorAll<HTMLLIElement>("li[data-id]").forEach((li) => {
       li.addEventListener("click", () => {
         selectNodeManually(Number(li.dataset.id));
       });
-      li.addEventListener("mouseenter", () => {
-        const thumb = li.dataset.thumb;
-        if (!thumb) return;
-        similarPreview.src = `${import.meta.env.BASE_URL}data/${thumb}`;
-        const rect = li.getBoundingClientRect();
-        similarPreview.style.left = `${Math.max(8, rect.left - 76)}px`;
-        similarPreview.style.top = `${rect.top}px`;
-        similarPreview.hidden = false;
-      });
-      li.addEventListener("mouseleave", () => {
-        similarPreview.hidden = true;
-      });
+      const name = li.querySelector<HTMLSpanElement>(".row-name")?.textContent ?? "";
+      const img = li.querySelector<HTMLImageElement>(".row-thumb");
+      if (name && img) {
+        fetchWikipediaInfo(name).then((wiki) => {
+          if (wiki.photoUrl) img.src = wiki.photoUrl;
+        });
+      }
     });
 
     const walkButton = document.getElementById("walk-button") as HTMLButtonElement;
@@ -188,7 +192,7 @@ async function bootstrap() {
 
   function renderDashboard() {
     const nodesById = new Map(data.nodes.map((n) => [n.id, n]));
-    const topPairs = [...data.edges].sort((a, b) => b[2] - a[2]).slice(0, 10);
+    const topPairs = [...data.edges].sort((a, b) => b[2] - a[2]).slice(0, 50);
     dashboardListEl.innerHTML = topPairs
       .map(([a, b, w]) => {
         const nameA = nodesById.get(a)?.name ?? "Unknown";
@@ -197,7 +201,10 @@ async function bootstrap() {
       })
       .join("");
     dashboardListEl.querySelectorAll<HTMLLIElement>("li[data-id]").forEach((li) => {
-      li.addEventListener("click", () => selectNodeManually(Number(li.dataset.id)));
+      li.addEventListener("click", () => {
+        selectNodeManually(Number(li.dataset.id));
+        dashboardEl.hidden = true;
+      });
     });
   }
 
@@ -312,6 +319,13 @@ async function bootstrap() {
   });
   aboutClose.addEventListener("click", () => {
     aboutPanel.hidden = true;
+  });
+
+  dashboardToggle.addEventListener("click", () => {
+    dashboardEl.hidden = !dashboardEl.hidden;
+  });
+  dashboardClose.addEventListener("click", () => {
+    dashboardEl.hidden = true;
   });
 
   let debounceHandle: ReturnType<typeof setTimeout> | undefined;

@@ -28,12 +28,12 @@ export function wikipediaInfoFromApiResponse(data: unknown): WikipediaInfo {
   return NO_INFO;
 }
 
-const cache = new Map<string, WikipediaInfo>();
+// Cache the in-flight promise, not just the resolved value -- preloading a
+// person's neighbors and then hovering/clicking one moments later must not
+// fire a second request for the same name while the first is still pending.
+const cache = new Map<string, Promise<WikipediaInfo>>();
 
-export async function fetchWikipediaInfo(name: string): Promise<WikipediaInfo> {
-  const cached = cache.get(name);
-  if (cached) return cached;
-
+async function fetchFromApi(name: string): Promise<WikipediaInfo> {
   const params = new URLSearchParams({
     action: "query",
     generator: "search",
@@ -46,16 +46,20 @@ export async function fetchWikipediaInfo(name: string): Promise<WikipediaInfo> {
     origin: "*",
   });
 
-  let info: WikipediaInfo = NO_INFO;
   try {
     const res = await fetch(`https://en.wikipedia.org/w/api.php?${params.toString()}`);
-    if (res.ok) {
-      info = wikipediaInfoFromApiResponse(await res.json());
-    }
+    if (!res.ok) return NO_INFO;
+    return wikipediaInfoFromApiResponse(await res.json());
   } catch {
-    info = NO_INFO;
+    return NO_INFO;
   }
+}
 
-  cache.set(name, info);
-  return info;
+export function fetchWikipediaInfo(name: string): Promise<WikipediaInfo> {
+  let pending = cache.get(name);
+  if (!pending) {
+    pending = fetchFromApi(name);
+    cache.set(name, pending);
+  }
+  return pending;
 }
