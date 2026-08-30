@@ -34,7 +34,13 @@ def refine_layout_with_neighbor_attraction(
     local neighborhoods well in the original high-dimensional space, but its
     2D projection can still place a directly-connected pair far apart --
     this pulls connected nodes together so 2D distance actually reflects
-    graph distance. Nodes with no edges are left exactly where UMAP put them.
+    graph distance. Nodes with no edges are left exactly where UMAP put them
+    -- see clamp_outliers for handling those (a "pull isolated nodes toward
+    the centroid too" gravity term was tried and measurably does NOT fix
+    far-flung isolated nodes: it shrinks the attraction-connected cluster
+    just as fast as it shrinks isolated nodes, so after normalize_coords
+    rescales to fill the canvas again, the relative outlier problem is
+    unchanged or worse).
 
     An earlier version used ForceAtlas2 (all-pairs repulsion each
     iteration), which is O(n^2) per iteration -- fine at a few hundred
@@ -65,6 +71,26 @@ def refine_layout_with_neighbor_attraction(
         delta[~has_neighbors] = 0.0
         pos = pos + delta
     return pos
+
+
+def clamp_outliers(xy: np.ndarray, *, max_radius_percentile: float = 95.0) -> np.ndarray:
+    """Caps how far from the layout's centroid any point can end up: points
+    beyond the given percentile radius are pulled straight in to sit
+    exactly on it, preserving their direction from the centroid. Directly
+    fixes far-flung outliers (measured on real data: isolated nodes ended
+    up with a median distance-from-centroid more than double the connected
+    nodes') without the side effects gravity has (see
+    refine_layout_with_neighbor_attraction's docstring).
+    """
+    if xy.shape[0] < 2:
+        return xy.copy()
+    centroid = xy.mean(axis=0)
+    offsets = xy - centroid
+    distances = np.linalg.norm(offsets, axis=1)
+    max_radius = np.percentile(distances, max_radius_percentile)
+    safe_distances = np.where(distances == 0, 1.0, distances)
+    scale = np.minimum(1.0, max_radius / safe_distances)
+    return centroid + offsets * scale[:, None]
 
 
 def normalize_coords(xy: np.ndarray, canvas_size: float = 10000.0) -> np.ndarray:

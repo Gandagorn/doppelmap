@@ -1,5 +1,6 @@
 import numpy as np
 from similarity_map.pipeline.layout import (
+    clamp_outliers,
     compute_layout,
     normalize_coords,
     refine_layout_with_neighbor_attraction,
@@ -62,6 +63,11 @@ def test_refine_layout_with_neighbor_attraction_leaves_isolated_nodes_in_place()
     # Nodes 2 and 3 have no edges at all, in a graph where 0-1 are
     # connected. They must not drift toward the origin or toward the
     # connected pair -- only nodes with at least one edge should move.
+    # (Real-data investigation: tried adding gravity here to fix far-flung
+    # isolated-node outliers, but it doesn't work -- gravity shrinks the
+    # attraction-connected cluster just as fast as it shrinks isolated
+    # nodes, so the *relative* outlier problem survives unchanged. See
+    # clamp_outliers below for the fix that actually worked.)
     xy = np.array([[0.0, 0.0], [10.0, 10.0], [500.0, 500.0], [-500.0, 500.0]])
     edges = [(0, 1, 0.8)]
 
@@ -69,6 +75,49 @@ def test_refine_layout_with_neighbor_attraction_leaves_isolated_nodes_in_place()
 
     assert np.allclose(refined[2], xy[2])
     assert np.allclose(refined[3], xy[3])
+
+
+def test_clamp_outliers_pulls_in_points_beyond_the_percentile_radius():
+    # Real data showed this exact problem: isolated (degree-0) nodes had a
+    # median distance-from-centroid more than double the connected nodes'.
+    # Rather than fight that with competing forces, directly cap how far
+    # from the centroid any point can end up: anything beyond the given
+    # percentile radius gets pulled straight in to sit exactly on it,
+    # preserving its direction from the centroid.
+    #
+    # 20 inlier points on a small circle, plus one clear outlier -- enough
+    # inliers that the percentile threshold reflects their spread rather
+    # than being dragged up by the single outlier itself (this is what the
+    # real 6,537-node dataset looked like: ~5% genuine outliers against a
+    # large inlier population).
+    rng = np.random.default_rng(0)
+    angles = np.linspace(0, 2 * np.pi, 20, endpoint=False)
+    inliers = np.stack([np.cos(angles), np.sin(angles)], axis=1)
+    xy = np.vstack([inliers, [[1000.0, 1000.0]]])
+
+    clamped = clamp_outliers(xy, max_radius_percentile=90.0)
+
+    centroid = xy.mean(axis=0)
+    dist_before = np.linalg.norm(xy[-1] - centroid)
+    dist_after = np.linalg.norm(clamped[-1] - centroid)
+    assert dist_after < dist_before * 0.1
+    # the direction from centroid must be preserved, only magnitude capped
+    direction_before = (xy[-1] - centroid) / dist_before
+    direction_after = (clamped[-1] - centroid) / dist_after
+    assert np.allclose(direction_before, direction_after, atol=1e-6)
+
+
+def test_clamp_outliers_leaves_points_within_radius_untouched():
+    xy = np.array([[0.0, 0.0], [1.0, 0.0], [0.0, 1.0], [1.0, 1.0]])
+    clamped = clamp_outliers(xy, max_radius_percentile=95.0)
+    assert np.allclose(clamped, xy)
+
+
+def test_clamp_outliers_preserves_shape_and_handles_degenerate_input():
+    xy = np.array([[5.0, 5.0]])
+    clamped = clamp_outliers(xy)
+    assert clamped.shape == (1, 2)
+    assert np.all(np.isfinite(clamped))
 
 
 def test_refine_layout_with_neighbor_attraction_is_deterministic():

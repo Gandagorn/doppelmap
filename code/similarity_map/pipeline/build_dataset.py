@@ -19,7 +19,12 @@ from .names import CELEBRITY_NAMES
 from .embeddings import generate_synthetic_embeddings
 from .real_embeddings import filter_prototypes, load_popularity, load_real_embeddings
 from .graph import build_knn, mutual_knn_edges, directed_similar_lists, mutual_degrees
-from .layout import compute_layout, normalize_coords, refine_layout_with_neighbor_attraction
+from .layout import (
+    clamp_outliers,
+    compute_layout,
+    normalize_coords,
+    refine_layout_with_neighbor_attraction,
+)
 from .thumbnails import generate_thumbnail
 
 DEFAULT_OUT = Path(__file__).resolve().parents[2] / "web" / "public" / "data"
@@ -45,6 +50,7 @@ def _assemble_graph(
 
     umap_xy = compute_layout(embeddings, seed=seed)
     refined_xy = refine_layout_with_neighbor_attraction(umap_xy, edges)
+    refined_xy = clamp_outliers(refined_xy)
     xy = normalize_coords(refined_xy)
 
     out_dir.mkdir(parents=True, exist_ok=True)

@@ -34,13 +34,22 @@ async function bootstrap() {
 
   const popularityById = new Map(data.nodes.map((n) => [String(n.id), n.popularity]));
   const popularities = data.nodes.map((n) => n.popularity);
-  let popularityThreshold = percentileThreshold(popularities, Number(popularitySlider.value));
+
+  // Four discrete levels rather than a continuous 0-100 slider -- easier to
+  // reason about ("show all" vs three progressively-stricter cuts) than an
+  // arbitrary percentage.
+  const POPULARITY_LEVELS = [0, 50, 80, 95];
+  const POPULARITY_LABELS = ["Show all", "Top 50%", "Top 20%", "Top 5%"];
+
+  let popularityThreshold = percentileThreshold(
+    popularities,
+    POPULARITY_LEVELS[Number(popularitySlider.value)]
+  );
 
   function updatePopularityLabel() {
     const visibleCount = data.nodes.filter((n) => n.popularity >= popularityThreshold).length;
-    const sliderValue = Number(popularitySlider.value);
-    popularityLabelEl.textContent =
-      sliderValue === 0 ? `Show all (${visibleCount})` : `Top ${100 - sliderValue}% (${visibleCount})`;
+    const levelIndex = Number(popularitySlider.value);
+    popularityLabelEl.textContent = `${POPULARITY_LABELS[levelIndex]} (${visibleCount})`;
   }
   updatePopularityLabel();
 
@@ -59,13 +68,16 @@ async function bootstrap() {
     }
     const info = getSidebarData(data, selection.selectedId);
     const localThumbSrc = `${import.meta.env.BASE_URL}data/${info.thumb}`;
+    const visibleSimilar = info.similar.filter(
+      (s) => (popularityById.get(String(s.id)) ?? 0) >= popularityThreshold
+    );
     sidebarEl.hidden = false;
     sidebarEl.innerHTML = `
       <img id="sidebar-photo" src="${escapeHtml(localThumbSrc)}" width="96" height="96" alt="${escapeHtml(info.name)}" />
       <h2>${escapeHtml(info.name)}</h2>
       <p class="attr">${escapeHtml(info.attr)}</p>
       <ul class="similar-list">
-        ${info.similar
+        ${visibleSimilar
           .map((s) => `<li data-id="${s.id}">${escapeHtml(s.name)} — ${s.percent}</li>`)
           .join("")}
       </ul>
@@ -160,9 +172,13 @@ async function bootstrap() {
   });
 
   popularitySlider.addEventListener("input", () => {
-    popularityThreshold = percentileThreshold(popularities, Number(popularitySlider.value));
+    popularityThreshold = percentileThreshold(
+      popularities,
+      POPULARITY_LEVELS[Number(popularitySlider.value)]
+    );
     updatePopularityLabel();
     renderer.refresh();
+    if (selection.selectedId !== null) renderSidebar();
   });
 
   // nodeReducer's output is cached and only re-runs on refresh() (which
