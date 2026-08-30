@@ -11,13 +11,20 @@ def compute_layout(
     embeddings: np.ndarray, *, n_neighbors: int = 15, seed: int = 42
 ) -> np.ndarray:
     """Returns an (n, 2) float array of raw UMAP coordinates."""
-    n_neighbors = min(n_neighbors, max(2, embeddings.shape[0] - 1))
+    n = embeddings.shape[0]
+    n_neighbors = min(n_neighbors, max(2, n - 1))
+    # UMAP's default "spectral" initialization calls an eigensolver that
+    # requires k < N and crashes below ~10 points -- a popularity-level
+    # subset can plausibly be this small. "random" init avoids it and is
+    # still deterministic given random_state.
+    init = "random" if n < 10 else "spectral"
     reducer = umap.UMAP(
         n_components=2,
         n_neighbors=n_neighbors,
         min_dist=0.15,
         metric="cosine",
         random_state=seed,
+        init=init,
     )
     return reducer.fit_transform(embeddings)
 

@@ -14,6 +14,18 @@ def test_compute_layout_shape():
     assert xy.shape == (30, 2)
 
 
+def test_compute_layout_handles_very_small_n():
+    # UMAP's default "spectral" initialization crashes below ~10 points
+    # (its eigensolver requires k < N; discovered when a popularity-level
+    # subset happened to be this small in a test fixture). A real dataset
+    # could plausibly hit a small level too, so this must not crash.
+    embeddings = np.random.default_rng(0).normal(size=(3, 512)).astype(np.float32)
+    embeddings /= np.linalg.norm(embeddings, axis=1, keepdims=True)
+    xy = compute_layout(embeddings, seed=1)
+    assert xy.shape == (3, 2)
+    assert np.all(np.isfinite(xy))
+
+
 def test_normalize_coords_within_bounds():
     xy = np.array([[-5.0, 100.0], [20.0, -30.0], [0.0, 0.0]])
     normalized = normalize_coords(xy, canvas_size=10000.0)
