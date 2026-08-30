@@ -29,7 +29,7 @@ async function bootstrap() {
   function selectNode(id: number) {
     selection.selectedId = id;
     resultsEl.innerHTML = "";
-    flyToNode(renderer, graph, String(id));
+    flyToNode(renderer, String(id));
     renderSidebar();
   }
 

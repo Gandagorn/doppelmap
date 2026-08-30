@@ -1,16 +1,15 @@
 import type Sigma from "sigma";
-import type Graph from "graphology";
 import type { GraphData } from "./types";
 
-export function flyToNode(
-  renderer: Sigma,
-  graph: Graph,
-  nodeId: string,
-  duration = 500
-): void {
-  const x = graph.getNodeAttribute(nodeId, "x") as number;
-  const y = graph.getNodeAttribute(nodeId, "y") as number;
-  renderer.getCamera().animate({ x, y, ratio: 0.15 }, { duration });
+export function flyToNode(renderer: Sigma, nodeId: string, duration = 500): void {
+  // Sigma's camera lives in an internally normalized ~[0,1] space (computed
+  // from the graph's bounding box), NOT the raw graph.json coordinates
+  // (our [0,10000] canvas). getNodeDisplayData returns the already-
+  // normalized, cached position -- reading graph.getNodeAttribute directly
+  // sends the camera thousands of units outside the graph's visible area.
+  const display = renderer.getNodeDisplayData(nodeId);
+  if (!display) throw new Error(`no display data for node ${nodeId} (not rendered yet?)`);
+  renderer.getCamera().animate({ x: display.x, y: display.y, ratio: 0.15 }, { duration });
 }
 
 export function formatSimilarity(weight: number): string {

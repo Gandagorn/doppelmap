@@ -1,6 +1,7 @@
-import { describe, expect, it } from "vitest";
-import { formatSimilarity, getSidebarData } from "../src/interactions";
+import { describe, expect, it, vi } from "vitest";
+import { flyToNode, formatSimilarity, getSidebarData } from "../src/interactions";
 import type { GraphData } from "../src/types";
+import type Sigma from "sigma";
 
 function sampleData(): GraphData {
   return {
@@ -21,6 +22,34 @@ function sampleData(): GraphData {
     },
   };
 }
+
+describe("flyToNode", () => {
+  it("targets the node's normalized display coordinates, not raw graph.json coordinates", () => {
+    // Sigma normalizes raw graph coordinates (e.g. our [0,10000] canvas)
+    // into a ~[0,1] camera space internally; renderer.getNodeDisplayData
+    // returns the already-normalized values. A node at raw (8679.9, 7352.3)
+    // on our canvas normalizes to roughly (0.91, 0.74) -- if flyToNode used
+    // the raw coordinates instead, the camera would fly ~9500x too far.
+    const animate = vi.fn();
+    const renderer = {
+      getNodeDisplayData: () => ({ x: 0.9104, y: 0.7352 }),
+      getCamera: () => ({ animate }),
+    } as unknown as Sigma;
+
+    flyToNode(renderer, "5", 500);
+
+    expect(animate).toHaveBeenCalledWith({ x: 0.9104, y: 0.7352, ratio: 0.15 }, { duration: 500 });
+  });
+
+  it("throws if the node has no cached display data", () => {
+    const renderer = {
+      getNodeDisplayData: () => undefined,
+      getCamera: () => ({ animate: vi.fn() }),
+    } as unknown as Sigma;
+
+    expect(() => flyToNode(renderer, "unknown", 500)).toThrow();
+  });
+});
 
 describe("formatSimilarity", () => {
   it("formats a cosine weight as a rounded percentage", () => {
