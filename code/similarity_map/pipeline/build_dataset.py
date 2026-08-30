@@ -5,6 +5,7 @@ built and tested before the real pipeline exists.
 """
 import argparse
 import json
+from collections.abc import Callable
 from pathlib import Path
 
 import numpy as np
@@ -14,11 +15,21 @@ from .embeddings import generate_synthetic_embeddings
 from .graph import build_knn, mutual_knn_edges, directed_similar_lists, mutual_degrees
 from .layout import compute_layout, normalize_coords
 from .thumbnails import generate_thumbnail
+from .wikipedia import _fetch_photo_url, fetch_photos
 
 DEFAULT_OUT = Path(__file__).resolve().parents[2] / "web" / "public" / "data"
+DEFAULT_PHOTO_CACHE = Path(__file__).resolve().parent / "wikipedia_photo_cache.json"
 
 
-def build_dataset(*, count: int, k: int, seed: int, out_dir: Path) -> dict:
+def build_dataset(
+    *,
+    count: int,
+    k: int,
+    seed: int,
+    out_dir: Path,
+    fetch_photo: Callable[[str], str | None] = _fetch_photo_url,
+    photo_cache_path: Path = DEFAULT_PHOTO_CACHE,
+) -> dict:
     if count <= 0:
         raise ValueError(f"count must be positive, got {count}")
     names = CELEBRITY_NAMES[:count]
@@ -39,10 +50,12 @@ def build_dataset(*, count: int, k: int, seed: int, out_dir: Path) -> dict:
 
     out_dir.mkdir(parents=True, exist_ok=True)
     thumbs_dir = out_dir / "thumbs"
+    photos = fetch_photos(names, cache_path=photo_cache_path, fetch_one=fetch_photo)
     nodes = []
     for i, name in enumerate(names):
         thumb_rel = f"thumbs/{i}.webp"
         generate_thumbnail(name, thumbs_dir / f"{i}.webp")
+        photo_url = photos.get(name)
         nodes.append({
             "id": i,
             "name": name,
@@ -50,7 +63,8 @@ def build_dataset(*, count: int, k: int, seed: int, out_dir: Path) -> dict:
             "y": round(float(xy[i, 1]), 1),
             "deg": deg[i],
             "thumb": thumb_rel,
-            "attr": "Synthetic placeholder — no real photo",
+            "photo": photo_url,
+            "attr": "Photo: Wikipedia" if photo_url else "Synthetic placeholder — no real photo",
         })
 
     graph = {
