@@ -192,7 +192,7 @@ async function bootstrap() {
 
   function renderDashboard() {
     const nodesById = new Map(data.nodes.map((n) => [n.id, n]));
-    const topPairs = [...data.edges].sort((a, b) => b[2] - a[2]).slice(0, 50);
+    const topPairs = [...data.edges].sort((a, b) => b[2] - a[2]).slice(0, 15);
     dashboardListEl.innerHTML = topPairs
       .map(([a, b, w]) => {
         const nameA = nodesById.get(a)?.name ?? "Unknown";
