@@ -23,9 +23,12 @@ async function bootstrap() {
     hoveredId: null,
   };
   const sidebarEl = document.getElementById("sidebar") as HTMLElement;
+  const searchInput = document.getElementById("search") as HTMLInputElement;
+  const resultsEl = document.getElementById("search-results") as HTMLDivElement;
 
   function selectNode(id: number) {
     selection.selectedId = id;
+    resultsEl.innerHTML = "";
     flyToNode(renderer, graph, String(id));
     renderSidebar();
   }
@@ -56,7 +59,6 @@ async function bootstrap() {
   }
 
   renderer.on("clickNode", ({ node }) => {
-    resultsEl.innerHTML = "";
     selectNode(Number(node));
   });
 
@@ -127,9 +129,6 @@ async function bootstrap() {
     }
   });
 
-  const searchInput = document.getElementById("search") as HTMLInputElement;
-  const resultsEl = document.getElementById("search-results") as HTMLDivElement;
-
   let debounceHandle: ReturnType<typeof setTimeout> | undefined;
   searchInput.addEventListener("input", () => {
     clearTimeout(debounceHandle);
@@ -141,7 +140,6 @@ async function bootstrap() {
         item.className = "search-result";
         item.textContent = node.name;
         item.addEventListener("click", () => {
-          resultsEl.innerHTML = "";
           searchInput.value = node.name;
           selectNode(node.id);
         });
