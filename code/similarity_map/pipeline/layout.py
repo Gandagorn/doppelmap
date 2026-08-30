@@ -1,10 +1,10 @@
 """2-D layout for the similarity graph: UMAP for global structure, refined
-with ForceAtlas2 on the mutual-kNN graph so edge length reflects graph
-distance, normalized to a fixed canvas.
+with sparse neighbor-attraction on the mutual-kNN graph so edge length
+reflects graph distance, normalized to a fixed canvas.
 """
-import networkx as nx
 import numpy as np
 import umap
+from scipy.sparse import csr_matrix
 
 
 def compute_layout(
@@ -22,34 +22,49 @@ def compute_layout(
     return reducer.fit_transform(embeddings)
 
 
-def refine_layout_with_forceatlas2(
+def refine_layout_with_neighbor_attraction(
     xy: np.ndarray,
     edges: list[tuple[int, int, float]],
     *,
-    max_iter: int = 500,
-    seed: int = 42,
+    iterations: int = 100,
+    attraction_strength: float = 0.2,
 ) -> np.ndarray:
-    """Refines a UMAP layout with ForceAtlas2 on the mutual-kNN graph, seeded
-    from the UMAP positions. UMAP preserves local neighborhoods well in the
-    original high-dimensional space, but its 2D projection can still place a
-    directly-connected (mutual-kNN) pair far apart -- ForceAtlas2's edge
-    attraction (weighted by similarity) pulls connected nodes together and
-    its gravity keeps disconnected nodes from drifting away, so the final
-    2D distance actually reflects graph distance.
+    """Refines a UMAP layout by repeatedly nudging each node toward the
+    similarity-weighted centroid of its mutual-kNN neighbors. UMAP preserves
+    local neighborhoods well in the original high-dimensional space, but its
+    2D projection can still place a directly-connected pair far apart --
+    this pulls connected nodes together so 2D distance actually reflects
+    graph distance. Nodes with no edges are left exactly where UMAP put them.
+
+    An earlier version used ForceAtlas2 (all-pairs repulsion each
+    iteration), which is O(n^2) per iteration -- fine at a few hundred
+    nodes, but ~37 minutes extrapolated at 10,000 (measured 203s at 3,000).
+    This is O(iterations * edges) via a sparse adjacency matvec each step,
+    so it scales to real dataset sizes.
     """
     n = xy.shape[0]
-    graph = nx.Graph()
-    graph.add_nodes_from(range(n))
-    for a, b, w in edges:
-        graph.add_edge(a, b, weight=w)
+    if not edges:
+        return xy.copy()
 
-    # forceatlas2_layout requires numpy-array position values (plain tuples
-    # raise AttributeError on the internal `.copy()` call).
-    initial_pos = {i: np.array([xy[i, 0], xy[i, 1]], dtype=np.float64) for i in range(n)}
-    refined = nx.forceatlas2_layout(
-        graph, pos=initial_pos, max_iter=max_iter, weight="weight", seed=seed
-    )
-    return np.array([refined[i] for i in range(n)], dtype=np.float64)
+    rows: list[int] = []
+    cols: list[int] = []
+    vals: list[float] = []
+    for a, b, w in edges:
+        rows += [a, b]
+        cols += [b, a]
+        vals += [w, w]
+    adjacency = csr_matrix((vals, (rows, cols)), shape=(n, n))
+    degree = np.asarray(adjacency.sum(axis=1)).flatten()
+    has_neighbors = degree > 0
+    safe_degree = np.where(has_neighbors, degree, 1.0)
+
+    pos = xy.astype(np.float64).copy()
+    for _ in range(iterations):
+        centroid = (adjacency @ pos) / safe_degree[:, None]
+        delta = attraction_strength * (centroid - pos)
+        delta[~has_neighbors] = 0.0
+        pos = pos + delta
+    return pos
 
 
 def normalize_coords(xy: np.ndarray, canvas_size: float = 10000.0) -> np.ndarray:
