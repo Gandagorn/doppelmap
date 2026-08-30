@@ -1,73 +1,8 @@
 import json
 
 import numpy as np
-import pytest
 
-from similarity_map.pipeline.build_dataset import build_dataset, build_dataset_from_embeddings
-
-
-def test_build_dataset_end_to_end(tmp_path):
-    graph = build_dataset(count=12, k=4, seed=1, out_dir=tmp_path)
-
-    assert graph["meta"]["count"] == 12
-    assert graph["meta"]["k"] == 4
-    assert len(graph["nodes"]) == 12
-
-    graph_json_path = tmp_path / "graph-all.json"
-    assert graph_json_path.exists()
-    on_disk = json.loads(graph_json_path.read_text(encoding="utf-8"))
-    assert on_disk == graph
-
-    for node in graph["nodes"]:
-        assert set(node.keys()) == {"id", "name", "x", "y", "deg", "thumb", "attr", "popularity"}
-        assert node["attr"] == "Synthetic placeholder — no real photo"
-        assert node["popularity"] == 1
-        thumb_path = tmp_path / node["thumb"]
-        assert thumb_path.exists()
-
-    for a, b, w in graph["edges"]:
-        assert 0 <= a < 12
-        assert 0 <= b < 12
-        assert 0.0 <= w <= 1.0
-
-    assert set(graph["similar"].keys()) == {str(i) for i in range(12)}
-
-
-def test_build_dataset_similar_list_is_wider_than_the_mutual_knn_edge_count(tmp_path):
-    # The sidebar's ranked "similar" list should show more candidates (up to
-    # similar_k=15) than the visual graph has edges per node (k) -- edges
-    # stay sparse for a legible layout, the list can afford to be richer.
-    graph = build_dataset(count=20, k=4, seed=1, out_dir=tmp_path)
-
-    assert graph["meta"]["k"] == 4
-    for ranked in graph["similar"].values():
-        assert len(ranked) == 15  # 20 people available, well above similar_k
-
-    # mutual-kNN edges are unaffected -- each node still has at most k=4
-    # mutual connections, not 15.
-    deg_by_id = {node["id"]: node["deg"] for node in graph["nodes"]}
-    assert max(deg_by_id.values()) <= 4
-
-
-def test_build_dataset_writes_identical_copies_for_every_level(tmp_path):
-    # Synthetic mode has no meaningful popularity variation to split levels
-    # on, but the frontend always expects one file per level -- so all four
-    # must exist, with the same content, to avoid a 404 when switching.
-    graph = build_dataset(count=8, k=4, seed=1, out_dir=tmp_path)
-
-    for label in ("all", "top50", "top20", "top5"):
-        on_disk = json.loads((tmp_path / f"graph-{label}.json").read_text(encoding="utf-8"))
-        assert on_disk == graph
-
-
-def test_build_dataset_rejects_count_over_available_names():
-    with pytest.raises(ValueError):
-        build_dataset(count=100_000, k=4, seed=1, out_dir=None)
-
-
-def test_build_dataset_rejects_non_positive_count():
-    with pytest.raises(ValueError):
-        build_dataset(count=0, k=4, seed=1, out_dir=None)
+from similarity_map.pipeline.build_dataset import build_dataset_from_embeddings
 
 
 def _write_fake_prototypes_npz(path, names, n_used=None):
@@ -142,6 +77,29 @@ def test_build_dataset_from_embeddings_uses_all_names_no_count_cap(tmp_path):
     graphs = build_dataset_from_embeddings(npz_path, k=4, seed=1, out_dir=tmp_path / "out")
 
     assert graphs["all"]["meta"]["count"] == 37
+
+
+def test_build_dataset_from_embeddings_similar_list_is_wider_than_the_mutual_knn_edge_count(
+    tmp_path,
+):
+    # The sidebar's ranked "similar" list should show more candidates (up to
+    # similar_k=15) than the visual graph has edges per node (k) -- edges
+    # stay sparse for a legible layout, the list can afford to be richer.
+    names = [f"Person {i}" for i in range(20)]
+    npz_path = tmp_path / "prototypes.npz"
+    _write_fake_prototypes_npz(npz_path, names)
+
+    graphs = build_dataset_from_embeddings(npz_path, k=4, seed=1, out_dir=tmp_path / "out")
+    graph = graphs["all"]
+
+    assert graph["meta"]["k"] == 4
+    for ranked in graph["similar"].values():
+        assert len(ranked) == 15  # 20 people available, well above similar_k
+
+    # mutual-kNN edges are unaffected -- each node still has at most k=4
+    # mutual connections, not 15.
+    deg_by_id = {node["id"]: node["deg"] for node in graph["nodes"]}
+    assert max(deg_by_id.values()) <= 4
 
 
 def test_build_dataset_from_embeddings_drops_thin_prototypes(tmp_path):

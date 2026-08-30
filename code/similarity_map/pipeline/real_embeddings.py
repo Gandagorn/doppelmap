@@ -1,5 +1,5 @@
 """Loads real ArcFace embeddings from a .npz produced by the notebook
-pipeline described in doppelmap-lld.md: `names` (str array), `E`
+pipeline (see data/doppelmap_ipynb.py): `names` (str array), `E`
 ((n, 512) float32, L2-normalized) and `n_used` (int, images kept per
 person) arrays, one row per name.
 """

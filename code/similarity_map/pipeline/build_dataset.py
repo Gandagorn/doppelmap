@@ -1,7 +1,6 @@
-"""CLI: assemble graph.json + thumbs/ matching the doppelmap frontend's
-schema (doppelmap-lld.md section 2.5), from either synthetic cluster-
-structured embeddings (default, for prototyping) or real ArcFace embeddings
-loaded from a .npz produced by the notebook pipeline (--embeddings).
+"""CLI: assemble one graph-<level>.json + thumbs/ per popularity level,
+matching the doppelmap frontend's schema, from real ArcFace embeddings
+loaded from a .npz produced by the notebook pipeline.
 
 Real profile photos are NOT fetched here -- the frontend looks them up live
 from Wikipedia when a node is clicked, so dataset generation stays fully
@@ -16,8 +15,6 @@ from pathlib import Path
 
 import numpy as np
 
-from .names import CELEBRITY_NAMES
-from .embeddings import generate_synthetic_embeddings
 from .real_embeddings import filter_prototypes, load_popularity, load_real_embeddings
 from .graph import build_knn, mutual_knn_edges, directed_similar_lists, mutual_degrees
 from .layout import (
@@ -115,38 +112,6 @@ def _assemble_graph(
     return graph
 
 
-def build_dataset(*, count: int, k: int, seed: int, out_dir: Path) -> dict:
-    """Synthetic dataset: curated name list + generated cluster-structured
-    embeddings, for prototyping before real embeddings exist.
-    """
-    if count <= 0:
-        raise ValueError(f"count must be positive, got {count}")
-    names = CELEBRITY_NAMES[:count]
-    if len(names) < count:
-        raise ValueError(
-            f"requested count={count} but only {len(names)} curated names are available"
-        )
-
-    embeddings_by_name = generate_synthetic_embeddings(names, seed=seed)
-    graph = _assemble_graph(
-        embeddings_by_name,
-        k=k,
-        seed=seed,
-        out_dir=out_dir,
-        version="synthetic-2026-08-29",
-        default_attr="Synthetic placeholder — no real photo",
-        graph_filename="graph-all.json",
-    )
-    # Synthetic mode has no meaningful popularity variation to split levels
-    # on (every node defaults to popularity=1), but the frontend always
-    # expects one file per level -- write identical copies so switching
-    # levels doesn't 404 against a synthetic dataset.
-    for label in POPULARITY_LEVELS:
-        if label != "all":
-            (out_dir / f"graph-{label}.json").write_text(json.dumps(graph), encoding="utf-8")
-    return graph
-
-
 def build_dataset_from_embeddings(
     embeddings_path: Path,
     *,
@@ -197,30 +162,21 @@ def build_dataset_from_embeddings(
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--count", type=int, default=150,
-        help="number of synthetic celebrities (ignored when --embeddings is given)",
+        "--embeddings", type=Path, required=True,
+        help="path to a real-embeddings .npz (names + E arrays), using every name in the file",
     )
     parser.add_argument("--k", type=int, default=8, help="kNN neighbors per node")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
-    parser.add_argument(
-        "--embeddings", type=Path, default=None,
-        help="path to a real-embeddings .npz (names + E arrays); when given, "
-        "builds from real data instead of synthetic, using every name in the file",
-    )
     args = parser.parse_args()
-    if args.embeddings:
-        graphs = build_dataset_from_embeddings(
-            args.embeddings, k=args.k, seed=args.seed, out_dir=args.out
+    graphs = build_dataset_from_embeddings(
+        args.embeddings, k=args.k, seed=args.seed, out_dir=args.out
+    )
+    for label, graph in graphs.items():
+        print(
+            f"[{label}] Wrote {len(graph['nodes'])} nodes, {len(graph['edges'])} edges "
+            f"to {args.out}/graph-{label}.json"
         )
-        for label, graph in graphs.items():
-            print(
-                f"[{label}] Wrote {len(graph['nodes'])} nodes, {len(graph['edges'])} edges "
-                f"to {args.out}/graph-{label}.json"
-            )
-    else:
-        graph = build_dataset(count=args.count, k=args.k, seed=args.seed, out_dir=args.out)
-        print(f"Wrote {len(graph['nodes'])} nodes, {len(graph['edges'])} edges to {args.out}")
 
 
 if __name__ == "__main__":
