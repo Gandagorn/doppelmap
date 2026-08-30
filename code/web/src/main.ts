@@ -3,7 +3,7 @@ import { loadGraphData, buildGraphology } from "./graphData";
 import { getDisplayMode } from "./sigmaSetup";
 import { searchNames } from "./search";
 import { flyToNode, getSidebarData, formatSimilarity, escapeHtml } from "./interactions";
-import { DIM_NODE_COLOR } from "./theme";
+import { DIM_NODE_COLOR, SELECTED_NODE_COLOR } from "./theme";
 import { fetchWikipediaInfo } from "./wikipediaPhoto";
 import type { GraphData } from "./types";
 
@@ -312,6 +312,15 @@ async function bootstrap() {
           display.color = DIM_NODE_COLOR;
           display.label = "";
         }
+      }
+
+      // The selected node itself gets its own look, independent of hover --
+      // otherwise it's only as visible as "not dimmed", easy to lose track
+      // of at a glance, especially at low degree (small size).
+      if (selection.selectedId !== null && nodeId === String(selection.selectedId)) {
+        display.color = SELECTED_NODE_COLOR;
+        display.size = attrs.size + 5;
+        display.zIndex = 1;
       }
       return display;
     });
