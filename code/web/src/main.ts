@@ -29,6 +29,7 @@ async function bootstrap() {
   const dashboardEl = document.getElementById("dashboard") as HTMLElement;
   const dashboardClose = document.getElementById("dashboard-close") as HTMLButtonElement;
   const dashboardListEl = document.getElementById("dashboard-list") as HTMLOListElement;
+  const hoverPreview = document.getElementById("hover-preview") as HTMLImageElement;
   const aboutToggle = document.getElementById("about-toggle") as HTMLButtonElement;
   const aboutPanel = document.getElementById("about-panel") as HTMLElement;
   const aboutClose = document.getElementById("about-close") as HTMLButtonElement;
@@ -112,6 +113,19 @@ async function bootstrap() {
           if (wiki.photoUrl) img.src = wiki.photoUrl;
         });
       }
+      // Show a larger version of whatever the row currently displays
+      // (placeholder or, usually by now, the real preloaded photo).
+      li.addEventListener("mouseenter", () => {
+        if (!img) return;
+        hoverPreview.src = img.src;
+        const rect = li.getBoundingClientRect();
+        hoverPreview.style.top = `${Math.max(8, rect.top - 90)}px`;
+        hoverPreview.style.left = `${rect.left - 216}px`;
+        hoverPreview.hidden = false;
+      });
+      li.addEventListener("mouseleave", () => {
+        hoverPreview.hidden = true;
+      });
     });
 
     const walkButton = document.getElementById("walk-button") as HTMLButtonElement;

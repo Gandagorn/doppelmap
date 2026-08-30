@@ -375,7 +375,24 @@ body {
   color: var(--text-muted);
   font-variant-numeric: tabular-nums;
 }
+#hover-preview {
+  position: fixed;
+  z-index: 30;
+  width: 200px;
+  height: 200px;
+  object-fit: cover;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  border: 1px solid var(--border);
+  pointer-events: none;
+}
+#hover-preview[hidden] {
+  display: none;
+}
 @media (max-width: 640px) {
+  #hover-preview {
+    display: none;
+  }
   #sidebar {
     top: auto;
     left: 0;
