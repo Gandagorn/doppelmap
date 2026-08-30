@@ -12,7 +12,7 @@ import type { GraphData } from "./types";
 // build_dataset.py's POPULARITY_LEVELS. Order matches the slider's 4 steps.
 const LEVEL_FILES = ["graph-all.json", "graph-top50.json", "graph-top20.json", "graph-top5.json"];
 const LEVEL_LABELS = ["Show all", "Top 50%", "Top 20%", "Top 5%"];
-const DEFAULT_LEVEL_INDEX = 2;
+const DEFAULT_LEVEL_INDEX = 1;
 
 const WALK_STEP_MS = 2000;
 

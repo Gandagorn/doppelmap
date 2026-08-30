@@ -17,8 +17,8 @@
       <input id="search" type="text" placeholder="Search a name..." autocomplete="off" />
       <div id="search-results"></div>
       <div id="popularity-control">
-        <label for="popularity-slider">Fame level: <span id="popularity-label">Top 20%</span></label>
-        <input id="popularity-slider" type="range" min="0" max="3" value="2" step="1" />
+        <label for="popularity-slider">Fame level: <span id="popularity-label">Top 50%</span></label>
+        <input id="popularity-slider" type="range" min="0" max="3" value="1" step="1" />
         <button id="walk-toggle" class="pill-btn" type="button">▶ Walk the Graph</button>
       </div>
       <button id="about-toggle" class="pill-btn" type="button" aria-label="About Doppelmap">ⓘ About</button>
@@ -33,7 +33,17 @@
           close together on the map. Profile photos are looked up live from
           Wikipedia when you click a name.
         </p>
-        <p>This dataset snapshot was generated on 2026-08-30.</p>
+        <p>
+          Sourced from the IMDB-WIKI dataset (celebrity photos crawled from
+          IMDb/Wikipedia around 2015) — anyone who wasn't already
+          well-photographed by then, or rose to fame since, won't appear
+          here. This snapshot was built on 2026-08-30.
+        </p>
+        <p>
+          <a href="https://github.com/Gandagorn/doppelmap" target="_blank" rel="noopener noreferrer">
+            ⭐ Star it on GitHub
+          </a>
+        </p>
       </div>
       <button id="dashboard-toggle" class="pill-btn" type="button" aria-label="Show most similar pairs">🏆 Top Pairs</button>
       <aside id="dashboard" hidden>
