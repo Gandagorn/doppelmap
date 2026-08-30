@@ -12,7 +12,7 @@ import type { GraphData } from "./types";
 // build_dataset.py's POPULARITY_LEVELS. Order matches the slider's 4 steps.
 const LEVEL_FILES = ["graph-all.json", "graph-top50.json", "graph-top20.json", "graph-top5.json"];
 const LEVEL_LABELS = ["Show all", "Top 50%", "Top 20%", "Top 5%"];
-const DEFAULT_LEVEL_INDEX = 1;
+const DEFAULT_LEVEL_INDEX = 2;
 
 const WALK_STEP_MS = 2000;
 
@@ -205,6 +205,7 @@ async function bootstrap() {
     selection.selectedId = null;
     resultsEl.innerHTML = "";
     renderSidebar();
+    autoWalkIfIdle();
   }
 
   function stepWalk() {
@@ -233,6 +234,19 @@ async function bootstrap() {
 
   function pickRandomNodeId(): number {
     return data.nodes[Math.floor(Math.random() * data.nodes.length)].id;
+  }
+
+  // Ambient default: whenever nothing is selected (first load, a level
+  // switch that dropped the previous selection, or an explicit deselect),
+  // start touring the map on its own rather than sitting on an empty map.
+  // Deliberately not called from inside loadLevel() itself -- an initial
+  // ?person= URL is resolved by the caller right after loadLevel resolves,
+  // and this must only run if that still left nothing selected.
+  function autoWalkIfIdle() {
+    if (selection.selectedId === null) {
+      selectNode(pickRandomNodeId());
+      startWalk();
+    }
   }
 
   function renderDashboard() {
@@ -375,7 +389,9 @@ async function bootstrap() {
   });
 
   popularitySlider.addEventListener("input", () => {
-    loadLevel(Number(popularitySlider.value)).catch((err) => console.error(err));
+    loadLevel(Number(popularitySlider.value))
+      .then(() => autoWalkIfIdle())
+      .catch((err) => console.error(err));
   });
 
   walkToggle.addEventListener("click", () => {
@@ -427,6 +443,7 @@ async function bootstrap() {
     const match = data.nodes.find((n) => n.name === initialPersonName);
     if (match) selectNode(match.id);
   }
+  autoWalkIfIdle();
 }
 
 bootstrap().catch((err) => {
