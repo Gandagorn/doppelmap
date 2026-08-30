@@ -303,12 +303,16 @@ def generate_synthetic_embeddings(
     embeddings = {}
     for name, cluster_id in zip(names, cluster_ids):
         center = cluster_centers[cluster_id]
-        noise = rng.normal(scale=noise_scale, size=EMBEDDING_DIM).astype(np.float32)
+        noise = rng.normal(size=EMBEDDING_DIM).astype(np.float32)
+        noise /= np.linalg.norm(noise) + 1e-8  # unit direction, uniform on the D-sphere
+        noise *= noise_scale  # fixed magnitude, independent of EMBEDDING_DIM
         vec = center + noise
         vec /= np.linalg.norm(vec)
         embeddings[name] = vec.astype(np.float32)
     return embeddings
 ```
+
+**Note (post-implementation correction):** the original draft here added raw `rng.normal(scale=noise_scale, ...)` noise directly, but an unnormalized Gaussian in 512-d has expected norm ≈ `noise_scale * sqrt(512)` ≈ `22.6 * noise_scale` — this swamps the unit-norm cluster center instead of perturbing it, and fails the cluster-structure test above. The code above (normalize the noise direction, then scale to a fixed magnitude) is the corrected version, verified during Task 2's implementation and review.
 
 - [ ] **Step 4: Run tests to verify they pass**
 
