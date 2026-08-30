@@ -1,44 +1,40 @@
-"""CLI: generate a fully synthetic graph.json + thumbs/ matching the real
-doppelmap pipeline's output schema (doppelmap-lld.md section 2.5), using
-synthetic embeddings instead of real face embeddings so the frontend can be
-built and tested before the real pipeline exists.
+"""CLI: assemble graph.json + thumbs/ matching the doppelmap frontend's
+schema (doppelmap-lld.md section 2.5), from either synthetic cluster-
+structured embeddings (default, for prototyping) or real ArcFace embeddings
+loaded from a .npz produced by the notebook pipeline (--embeddings).
+
+Real profile photos are NOT fetched here -- the frontend looks them up live
+from Wikipedia when a node is clicked, so dataset generation stays fully
+offline regardless of dataset size. Every node gets a locally-generated
+placeholder avatar as the thumbnail shown before (or in place of) a real
+photo.
 """
 import argparse
 import json
-from collections.abc import Callable
 from pathlib import Path
 
 import numpy as np
 
 from .names import CELEBRITY_NAMES
 from .embeddings import generate_synthetic_embeddings
+from .real_embeddings import load_real_embeddings
 from .graph import build_knn, mutual_knn_edges, directed_similar_lists, mutual_degrees
 from .layout import compute_layout, normalize_coords
 from .thumbnails import generate_thumbnail
-from .wikipedia import _fetch_photo_url, fetch_photos
 
 DEFAULT_OUT = Path(__file__).resolve().parents[2] / "web" / "public" / "data"
-DEFAULT_PHOTO_CACHE = Path(__file__).resolve().parent / "wikipedia_photo_cache.json"
 
 
-def build_dataset(
+def _assemble_graph(
+    embeddings_by_name: dict[str, np.ndarray],
     *,
-    count: int,
     k: int,
     seed: int,
     out_dir: Path,
-    fetch_photo: Callable[[str], str | None] = _fetch_photo_url,
-    photo_cache_path: Path = DEFAULT_PHOTO_CACHE,
+    version: str,
+    default_attr: str,
 ) -> dict:
-    if count <= 0:
-        raise ValueError(f"count must be positive, got {count}")
-    names = CELEBRITY_NAMES[:count]
-    if len(names) < count:
-        raise ValueError(
-            f"requested count={count} but only {len(names)} curated names are available"
-        )
-
-    embeddings_by_name = generate_synthetic_embeddings(names, seed=seed)
+    names = list(embeddings_by_name.keys())
     embeddings = np.stack([embeddings_by_name[n] for n in names])
 
     neighbor_idx, sim = build_knn(embeddings, k=k)
@@ -50,12 +46,10 @@ def build_dataset(
 
     out_dir.mkdir(parents=True, exist_ok=True)
     thumbs_dir = out_dir / "thumbs"
-    photos = fetch_photos(names, cache_path=photo_cache_path, fetch_one=fetch_photo)
     nodes = []
     for i, name in enumerate(names):
         thumb_rel = f"thumbs/{i}.webp"
         generate_thumbnail(name, thumbs_dir / f"{i}.webp")
-        photo_url = photos.get(name)
         nodes.append({
             "id": i,
             "name": name,
@@ -63,12 +57,11 @@ def build_dataset(
             "y": round(float(xy[i, 1]), 1),
             "deg": deg[i],
             "thumb": thumb_rel,
-            "photo": photo_url,
-            "attr": "Photo: Wikipedia" if photo_url else "Synthetic placeholder — no real photo",
+            "attr": default_attr,
         })
 
     graph = {
-        "meta": {"version": "synthetic-2026-08-29", "count": len(names), "k": k},
+        "meta": {"version": version, "count": len(names), "k": k},
         "nodes": nodes,
         "edges": [[a, b, w] for a, b, w in edges],
         "similar": {str(i): ranked for i, ranked in similar.items()},
@@ -78,14 +71,66 @@ def build_dataset(
     return graph
 
 
+def build_dataset(*, count: int, k: int, seed: int, out_dir: Path) -> dict:
+    """Synthetic dataset: curated name list + generated cluster-structured
+    embeddings, for prototyping before real embeddings exist.
+    """
+    if count <= 0:
+        raise ValueError(f"count must be positive, got {count}")
+    names = CELEBRITY_NAMES[:count]
+    if len(names) < count:
+        raise ValueError(
+            f"requested count={count} but only {len(names)} curated names are available"
+        )
+
+    embeddings_by_name = generate_synthetic_embeddings(names, seed=seed)
+    return _assemble_graph(
+        embeddings_by_name,
+        k=k,
+        seed=seed,
+        out_dir=out_dir,
+        version="synthetic-2026-08-29",
+        default_attr="Synthetic placeholder — no real photo",
+    )
+
+
+def build_dataset_from_embeddings(embeddings_path: Path, *, k: int, seed: int, out_dir: Path) -> dict:
+    """Real dataset: load precomputed ArcFace embeddings from a .npz (see
+    real_embeddings.load_real_embeddings) -- every name the file contains is
+    used, no count cap.
+    """
+    embeddings_by_name = load_real_embeddings(embeddings_path)
+    return _assemble_graph(
+        embeddings_by_name,
+        k=k,
+        seed=seed,
+        out_dir=out_dir,
+        version=f"real-{embeddings_path.stem}",
+        default_attr="Placeholder avatar — real photo not yet linked",
+    )
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--count", type=int, default=150, help="number of synthetic celebrities")
+    parser.add_argument(
+        "--count", type=int, default=150,
+        help="number of synthetic celebrities (ignored when --embeddings is given)",
+    )
     parser.add_argument("--k", type=int, default=8, help="kNN neighbors per node")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
+    parser.add_argument(
+        "--embeddings", type=Path, default=None,
+        help="path to a real-embeddings .npz (names + E arrays); when given, "
+        "builds from real data instead of synthetic, using every name in the file",
+    )
     args = parser.parse_args()
-    graph = build_dataset(count=args.count, k=args.k, seed=args.seed, out_dir=args.out)
+    if args.embeddings:
+        graph = build_dataset_from_embeddings(
+            args.embeddings, k=args.k, seed=args.seed, out_dir=args.out
+        )
+    else:
+        graph = build_dataset(count=args.count, k=args.k, seed=args.seed, out_dir=args.out)
     print(f"Wrote {len(graph['nodes'])} nodes, {len(graph['edges'])} edges to {args.out}")
 
 
