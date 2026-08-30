@@ -2,9 +2,9 @@ import Sigma from "sigma";
 import { loadGraphData, buildGraphology } from "./graphData";
 import { getDisplayMode } from "./sigmaSetup";
 import { searchNames } from "./search";
-import { flyToNode, getSidebarData, escapeHtml } from "./interactions";
+import { flyToNode, getSidebarData, formatSimilarity, escapeHtml } from "./interactions";
 import { DIM_NODE_COLOR } from "./theme";
-import { fetchWikipediaPhoto } from "./wikipediaPhoto";
+import { fetchWikipediaInfo } from "./wikipediaPhoto";
 import type { GraphData } from "./types";
 
 // Each popularity level is its own precomputed dataset (own kNN graph, own
@@ -12,6 +12,8 @@ import type { GraphData } from "./types";
 // build_dataset.py's POPULARITY_LEVELS. Order matches the slider's 4 steps.
 const LEVEL_FILES = ["graph-all.json", "graph-top50.json", "graph-top20.json", "graph-top5.json"];
 const LEVEL_LABELS = ["Show all", "Top 50%", "Top 20%", "Top 5%"];
+
+const WALK_STEP_MS = 2000;
 
 async function bootstrap() {
   const container = document.getElementById("graph-container");
@@ -23,6 +25,11 @@ async function bootstrap() {
   const resultsEl = document.getElementById("search-results") as HTMLDivElement;
   const popularitySlider = document.getElementById("popularity-slider") as HTMLInputElement;
   const popularityLabelEl = document.getElementById("popularity-label") as HTMLSpanElement;
+  const dashboardListEl = document.getElementById("dashboard-list") as HTMLOListElement;
+  const similarPreview = document.getElementById("similar-preview") as HTMLImageElement;
+  const aboutToggle = document.getElementById("about-toggle") as HTMLButtonElement;
+  const aboutPanel = document.getElementById("about-panel") as HTMLElement;
+  const aboutClose = document.getElementById("about-close") as HTMLButtonElement;
 
   const dataCache = new Map<number, GraphData>();
 
@@ -34,6 +41,16 @@ async function bootstrap() {
     hoveredId: null,
   };
 
+  // "Walk the Graph": auto-advance from the selected node to its highest-
+  // similarity not-yet-visited neighbor, repeating on a timer. visited
+  // prevents cycles; the walk stops on its own at a dead end (every
+  // neighbor already visited).
+  const walk: { active: boolean; visited: Set<number>; timer: ReturnType<typeof setInterval> | undefined } = {
+    active: false,
+    visited: new Set(),
+    timer: undefined,
+  };
+
   // Reassigned by loadLevel() on every slider change; always assigned
   // before any handler that reads them can actually run (loadLevel
   // completes once before bootstrap() returns, and nothing before that
@@ -41,6 +58,14 @@ async function bootstrap() {
   let data!: GraphData;
   let graph!: ReturnType<typeof buildGraphology>;
   let renderer!: Sigma;
+
+  function stopWalk() {
+    walk.active = false;
+    if (walk.timer !== undefined) {
+      clearInterval(walk.timer);
+      walk.timer = undefined;
+    }
+  }
 
   function renderSidebar() {
     if (selection.selectedId === null) {
@@ -52,31 +77,66 @@ async function bootstrap() {
     const localThumbSrc = `${import.meta.env.BASE_URL}data/${info.thumb}`;
     sidebarEl.hidden = false;
     sidebarEl.innerHTML = `
-      <img id="sidebar-photo" src="${escapeHtml(localThumbSrc)}" width="96" height="96" alt="${escapeHtml(info.name)}" />
+      <img id="sidebar-photo" src="${escapeHtml(localThumbSrc)}" width="160" height="160" alt="${escapeHtml(info.name)}" />
       <h2>${escapeHtml(info.name)}</h2>
       <p class="attr">${escapeHtml(info.attr)}</p>
       <ul class="similar-list">
         ${info.similar
-          .map((s) => `<li data-id="${s.id}">${escapeHtml(s.name)} — ${s.percent}</li>`)
+          .map(
+            (s) =>
+              `<li data-id="${s.id}" data-thumb="${escapeHtml(s.thumb)}">${escapeHtml(s.name)} — ${s.percent}</li>`
+          )
           .join("")}
       </ul>
+      <button id="walk-button" class="walk-button" type="button">
+        ${walk.active ? "⏸ Stop Walking" : "▶ Walk the Graph"}
+      </button>
     `;
     sidebarEl.querySelectorAll<HTMLLIElement>("li[data-id]").forEach((li) => {
       li.addEventListener("click", () => {
-        selectNode(Number(li.dataset.id));
+        selectNodeManually(Number(li.dataset.id));
+      });
+      li.addEventListener("mouseenter", () => {
+        const thumb = li.dataset.thumb;
+        if (!thumb) return;
+        similarPreview.src = `${import.meta.env.BASE_URL}data/${thumb}`;
+        const rect = li.getBoundingClientRect();
+        similarPreview.style.left = `${Math.max(8, rect.left - 76)}px`;
+        similarPreview.style.top = `${rect.top}px`;
+        similarPreview.hidden = false;
+      });
+      li.addEventListener("mouseleave", () => {
+        similarPreview.hidden = true;
       });
     });
 
+    const walkButton = document.getElementById("walk-button") as HTMLButtonElement;
+    walkButton.addEventListener("click", () => {
+      if (walk.active) {
+        stopWalk();
+        renderSidebar();
+      } else {
+        startWalk();
+      }
+    });
+
     // Instant paint with the local placeholder above; swap in the real
-    // photo once (if) it resolves. Guard against the user having selected
-    // a different node (or switched levels) before this fetch comes back.
+    // photo/link once (if) it resolves. Guard against the user having
+    // selected a different node (or switched levels) before this fetch
+    // comes back.
     const requestedId = selection.selectedId;
-    fetchWikipediaPhoto(info.name).then((url) => {
-      if (url === null || selection.selectedId !== requestedId) return;
-      const img = document.getElementById("sidebar-photo") as HTMLImageElement | null;
-      const attrEl = sidebarEl.querySelector<HTMLParagraphElement>(".attr");
-      if (img) img.src = url;
-      if (attrEl) attrEl.textContent = "Photo: Wikipedia";
+    fetchWikipediaInfo(info.name).then((wiki) => {
+      if (selection.selectedId !== requestedId) return;
+      if (wiki.photoUrl) {
+        const img = document.getElementById("sidebar-photo") as HTMLImageElement | null;
+        if (img) img.src = wiki.photoUrl;
+      }
+      if (wiki.pageUrl) {
+        const attrEl = sidebarEl.querySelector<HTMLParagraphElement>(".attr");
+        if (attrEl) {
+          attrEl.innerHTML = `Photo: <a href="${escapeHtml(wiki.pageUrl)}" target="_blank" rel="noopener noreferrer">Wikipedia</a>`;
+        }
+      }
     });
   }
 
@@ -87,10 +147,65 @@ async function bootstrap() {
     renderSidebar();
   }
 
+  // Manual interactions (clicking a node, a search result, a similar-list
+  // entry, a dashboard entry) stop any running walk -- the user taking
+  // control should end the automated tour rather than fight it.
+  function selectNodeManually(id: number) {
+    stopWalk();
+    selectNode(id);
+  }
+
+  function deselectManually() {
+    stopWalk();
+    selection.selectedId = null;
+    resultsEl.innerHTML = "";
+    renderSidebar();
+  }
+
+  function stepWalk() {
+    if (selection.selectedId === null) {
+      stopWalk();
+      return;
+    }
+    const info = getSidebarData(data, selection.selectedId);
+    const next = info.similar.find((s) => !walk.visited.has(s.id));
+    if (!next) {
+      stopWalk();
+      renderSidebar();
+      return;
+    }
+    walk.visited.add(next.id);
+    selectNode(next.id);
+  }
+
+  function startWalk() {
+    if (selection.selectedId === null) return;
+    walk.active = true;
+    walk.visited = new Set([selection.selectedId]);
+    stepWalk();
+    walk.timer = setInterval(stepWalk, WALK_STEP_MS);
+  }
+
+  function renderDashboard() {
+    const nodesById = new Map(data.nodes.map((n) => [n.id, n]));
+    const topPairs = [...data.edges].sort((a, b) => b[2] - a[2]).slice(0, 10);
+    dashboardListEl.innerHTML = topPairs
+      .map(([a, b, w]) => {
+        const nameA = nodesById.get(a)?.name ?? "Unknown";
+        const nameB = nodesById.get(b)?.name ?? "Unknown";
+        return `<li data-id="${a}">${escapeHtml(nameA)} ↔ ${escapeHtml(nameB)} (${formatSimilarity(w)})</li>`;
+      })
+      .join("");
+    dashboardListEl.querySelectorAll<HTMLLIElement>("li[data-id]").forEach((li) => {
+      li.addEventListener("click", () => selectNodeManually(Number(li.dataset.id)));
+    });
+  }
+
   async function loadLevel(levelIndex: number) {
     // A selection/search from the previous level doesn't necessarily exist
     // in the new one -- close the sidebar and clear search rather than
     // show something wrong.
+    stopWalk();
     selection.selectedId = null;
     selection.hoveredId = null;
     resultsEl.innerHTML = "";
@@ -113,7 +228,7 @@ async function bootstrap() {
     });
 
     renderer.on("clickNode", ({ node }) => {
-      selectNode(Number(node));
+      selectNodeManually(Number(node));
     });
 
     renderer.on("enterNode", ({ node }) => {
@@ -127,9 +242,7 @@ async function bootstrap() {
     });
 
     renderer.on("clickStage", () => {
-      selection.selectedId = null;
-      resultsEl.innerHTML = "";
-      renderSidebar();
+      deselectManually();
     });
 
     renderer.setSetting("nodeReducer", (nodeId, attrs) => {
@@ -137,11 +250,15 @@ async function bootstrap() {
       const mode = getDisplayMode(renderer.getCamera().ratio);
       if (mode === "dot") display.label = "";
 
-      if (selection.hoveredId !== null) {
-        const hoveredKey = String(selection.hoveredId);
-        const isHovered = nodeId === hoveredKey;
-        const isNeighbor = graph.areNeighbors(nodeId, hoveredKey);
-        if (!isHovered && !isNeighbor) {
+      // A click "sticks" the highlight even after the mouse moves away;
+      // hovering a (different) node temporarily previews its neighbors on
+      // top of that.
+      const highlightId = selection.hoveredId ?? selection.selectedId;
+      if (highlightId !== null) {
+        const highlightKey = String(highlightId);
+        const isHighlighted = nodeId === highlightKey;
+        const isNeighbor = graph.areNeighbors(nodeId, highlightKey);
+        if (!isHighlighted && !isNeighbor) {
           display.color = DIM_NODE_COLOR;
           display.label = "";
         }
@@ -151,10 +268,11 @@ async function bootstrap() {
 
     renderer.setSetting("edgeReducer", (edge, attrs) => {
       const display = { ...attrs };
-      if (selection.hoveredId !== null) {
-        const hoveredKey = String(selection.hoveredId);
+      const highlightId = selection.hoveredId ?? selection.selectedId;
+      if (highlightId !== null) {
+        const highlightKey = String(highlightId);
         const extremities = graph.extremities(edge);
-        if (!extremities.includes(hoveredKey)) {
+        if (!extremities.includes(highlightKey)) {
           display.hidden = true;
         }
       }
@@ -176,18 +294,24 @@ async function bootstrap() {
     });
 
     popularityLabelEl.textContent = `${LEVEL_LABELS[levelIndex]} (${data.nodes.length})`;
+    renderDashboard();
   }
 
   window.addEventListener("keydown", (evt) => {
     if (evt.key === "Escape") {
-      selection.selectedId = null;
-      resultsEl.innerHTML = "";
-      renderSidebar();
+      deselectManually();
     }
   });
 
   popularitySlider.addEventListener("input", () => {
     loadLevel(Number(popularitySlider.value)).catch((err) => console.error(err));
+  });
+
+  aboutToggle.addEventListener("click", () => {
+    aboutPanel.hidden = !aboutPanel.hidden;
+  });
+  aboutClose.addEventListener("click", () => {
+    aboutPanel.hidden = true;
   });
 
   let debounceHandle: ReturnType<typeof setTimeout> | undefined;
@@ -202,7 +326,7 @@ async function bootstrap() {
         item.textContent = node.name;
         item.addEventListener("click", () => {
           searchInput.value = node.name;
-          selectNode(node.id);
+          selectNodeManually(node.id);
         });
         resultsEl.appendChild(item);
       }

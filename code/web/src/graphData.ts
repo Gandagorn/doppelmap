@@ -9,7 +9,7 @@ export function buildGraphology(data: GraphData, isDark: boolean): Graph {
       label: node.name,
       x: node.x,
       y: node.y,
-      size: 3 + Math.sqrt(node.deg),
+      size: 1.5 + Math.sqrt(node.deg) * 0.6,
       color: nodeColor(isDark),
       thumb: node.thumb,
       attr: node.attr,

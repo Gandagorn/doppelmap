@@ -30,7 +30,7 @@ export interface SidebarData {
   name: string;
   thumb: string;
   attr: string;
-  similar: { id: number; name: string; percent: string }[];
+  similar: { id: number; name: string; percent: string; thumb: string }[];
 }
 
 export function getSidebarData(data: GraphData, nodeId: number): SidebarData {
@@ -47,6 +47,7 @@ export function getSidebarData(data: GraphData, nodeId: number): SidebarData {
       id,
       name: nodesById.get(id)?.name ?? "Unknown",
       percent: formatSimilarity(weight),
+      thumb: nodesById.get(id)?.thumb ?? "",
     })),
   };
 }

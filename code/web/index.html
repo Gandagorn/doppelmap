@@ -11,10 +11,29 @@
       <input id="search" type="text" placeholder="Search a name..." autocomplete="off" />
       <div id="search-results"></div>
       <div id="popularity-control">
-        <label for="popularity-slider">Popularity: <span id="popularity-label">Show all</span></label>
-        <input id="popularity-slider" type="range" min="0" max="3" value="0" step="1" />
+        <label for="popularity-slider">Popularity: <span id="popularity-label">Top 20%</span></label>
+        <input id="popularity-slider" type="range" min="0" max="3" value="2" step="1" />
       </div>
+      <button id="about-toggle" type="button" aria-label="About Doppelmap">ⓘ About</button>
+      <div id="about-panel" hidden>
+        <button id="about-close" type="button" aria-label="Close">✕</button>
+        <h2>About Doppelmap</h2>
+        <p>
+          Doppelmap maps face-similarity between public figures using real
+          ArcFace face embeddings (InsightFace <code>buffalo_l</code>)
+          computed over photos from the IMDB-WIKI dataset. Points are laid
+          out with UMAP, then refined so visually-similar faces end up
+          close together on the map. Profile photos are looked up live from
+          Wikipedia when you click a name.
+        </p>
+        <p>This dataset snapshot was generated on 2026-08-30.</p>
+      </div>
+      <aside id="dashboard">
+        <h3>Most Similar Pairs</h3>
+        <ol id="dashboard-list"></ol>
+      </aside>
       <div id="graph-container"></div>
+      <img id="similar-preview" alt="" hidden />
       <aside id="sidebar" hidden></aside>
     </div>
     <script type="module" src="/src/main.ts"></script>

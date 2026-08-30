@@ -63,8 +63,8 @@ describe("getSidebarData", () => {
     const sidebar = getSidebarData(sampleData(), 0);
     expect(sidebar.name).toBe("Alice");
     expect(sidebar.similar).toEqual([
-      { id: 1, name: "Bob", percent: "91.2%" },
-      { id: 2, name: "Carol", percent: "50%" },
+      { id: 1, name: "Bob", percent: "91.2%", thumb: "thumbs/1.webp" },
+      { id: 2, name: "Carol", percent: "50%", thumb: "thumbs/2.webp" },
     ]);
   });
 

@@ -33,6 +33,22 @@ def test_build_dataset_end_to_end(tmp_path):
     assert set(graph["similar"].keys()) == {str(i) for i in range(12)}
 
 
+def test_build_dataset_similar_list_is_wider_than_the_mutual_knn_edge_count(tmp_path):
+    # The sidebar's ranked "similar" list should show more candidates (up to
+    # similar_k=15) than the visual graph has edges per node (k) -- edges
+    # stay sparse for a legible layout, the list can afford to be richer.
+    graph = build_dataset(count=20, k=4, seed=1, out_dir=tmp_path)
+
+    assert graph["meta"]["k"] == 4
+    for ranked in graph["similar"].values():
+        assert len(ranked) == 15  # 20 people available, well above similar_k
+
+    # mutual-kNN edges are unaffected -- each node still has at most k=4
+    # mutual connections, not 15.
+    deg_by_id = {node["id"]: node["deg"] for node in graph["nodes"]}
+    assert max(deg_by_id.values()) <= 4
+
+
 def test_build_dataset_writes_identical_copies_for_every_level(tmp_path):
     # Synthetic mode has no meaningful popularity variation to split levels
     # on, but the frontend always expects one file per level -- so all four

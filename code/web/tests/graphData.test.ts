@@ -59,4 +59,12 @@ describe("buildGraphology", () => {
     const graph = buildGraphology(sampleData(), false);
     expect(graph.getEdgeAttribute("0", "1", "color")).toBe("rgba(42, 120, 214, 0.35)");
   });
+
+  it("sizes nodes smaller than the previous formula, still scaling with degree", () => {
+    const graph = buildGraphology(sampleData(), false);
+    const degZero = graph.getNodeAttribute("1", "size"); // deg: 1
+    const degTwo = graph.getNodeAttribute("0", "size"); // deg: 2
+    expect(degZero).toBeLessThan(3); // old formula's minimum was 3 (deg=0)
+    expect(degTwo).toBeGreaterThan(degZero); // still grows with degree
+  });
 });

@@ -63,13 +63,20 @@ def _assemble_graph(
     default_attr: str,
     popularity_by_name: dict[str, int] | None = None,
     graph_filename: str = "graph.json",
+    similar_k: int = 15,
 ) -> dict:
     names = list(embeddings_by_name.keys())
     embeddings = np.stack([embeddings_by_name[n] for n in names])
 
-    neighbor_idx, sim = build_knn(embeddings, k=k)
-    edges = mutual_knn_edges(neighbor_idx, sim)
-    similar = directed_similar_lists(neighbor_idx, sim)
+    # The sidebar's ranked "similar" list wants more entries (similar_k)
+    # than the visual mutual-kNN graph should have edges (k) -- fetch the
+    # wider neighbor list once and slice both from it, rather than two
+    # separate kNN passes. build_knn already sorts each row by descending
+    # similarity, so the first k columns are exactly the same top-k that a
+    # k-only call would have returned.
+    neighbor_idx, sim = build_knn(embeddings, k=max(k, similar_k))
+    edges = mutual_knn_edges(neighbor_idx[:, :k], sim[:, :k])
+    similar = directed_similar_lists(neighbor_idx[:, :similar_k], sim[:, :similar_k])
     deg = mutual_degrees(edges, n=len(names))
 
     umap_xy = compute_layout(embeddings, seed=seed)
