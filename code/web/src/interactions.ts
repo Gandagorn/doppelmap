@@ -29,6 +29,7 @@ export interface SidebarData {
   id: number;
   name: string;
   thumb: string;
+  photo: string | null;
   attr: string;
   similar: { id: number; name: string; percent: string }[];
 }
@@ -42,6 +43,7 @@ export function getSidebarData(data: GraphData, nodeId: number): SidebarData {
     id: node.id,
     name: node.name,
     thumb: node.thumb,
+    photo: node.photo,
     attr: node.attr,
     similar: ranked.map(([id, weight]) => ({
       id,

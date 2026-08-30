@@ -8,6 +8,14 @@ body {
 #graph-container {
   position: fixed;
   inset: 0;
+  /* Sigma's canvases are transparent, so this gradient shows through
+     behind the rendered graph. */
+  background: radial-gradient(circle at 50% 40%, #eef4fc 0%, #fafbfc 70%);
+}
+@media (prefers-color-scheme: dark) {
+  #graph-container {
+    background: radial-gradient(circle at 50% 40%, #101c33 0%, #05070d 70%);
+  }
 }
 #search {
   position: fixed;

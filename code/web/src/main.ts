@@ -3,10 +3,12 @@ import { loadGraphData, buildGraphology } from "./graphData";
 import { getDisplayMode } from "./sigmaSetup";
 import { searchNames } from "./search";
 import { flyToNode, getSidebarData, escapeHtml } from "./interactions";
+import { DIM_NODE_COLOR } from "./theme";
 
 async function bootstrap() {
   const data = await loadGraphData(`${import.meta.env.BASE_URL}data/graph.json`);
-  const graph = buildGraphology(data);
+  const isDark = window.matchMedia?.("(prefers-color-scheme: dark)").matches ?? false;
+  const graph = buildGraphology(data, isDark);
 
   const container = document.getElementById("graph-container");
   if (!container) throw new Error("#graph-container not found in DOM");
@@ -40,9 +42,10 @@ async function bootstrap() {
       return;
     }
     const info = getSidebarData(data, selection.selectedId);
+    const photoSrc = info.photo ?? `${import.meta.env.BASE_URL}data/${info.thumb}`;
     sidebarEl.hidden = false;
     sidebarEl.innerHTML = `
-      <img src="${import.meta.env.BASE_URL}data/${info.thumb}" width="96" height="96" alt="${escapeHtml(info.name)}" />
+      <img src="${escapeHtml(photoSrc)}" width="96" height="96" alt="${escapeHtml(info.name)}" />
       <h2>${escapeHtml(info.name)}</h2>
       <p class="attr">${escapeHtml(info.attr)}</p>
       <ul class="similar-list">
@@ -96,7 +99,7 @@ async function bootstrap() {
       const isHovered = nodeId === hoveredKey;
       const isNeighbor = graph.areNeighbors(nodeId, hoveredKey);
       if (!isHovered && !isNeighbor) {
-        display.color = "#d8d8d8";
+        display.color = DIM_NODE_COLOR;
         display.label = "";
       }
     }

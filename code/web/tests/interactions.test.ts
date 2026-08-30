@@ -7,9 +7,9 @@ function sampleData(): GraphData {
   return {
     meta: { version: "test", count: 3, k: 2 },
     nodes: [
-      { id: 0, name: "Alice", x: 0, y: 0, deg: 2, thumb: "thumbs/0.webp", attr: "synthetic" },
-      { id: 1, name: "Bob", x: 10, y: 10, deg: 1, thumb: "thumbs/1.webp", attr: "synthetic" },
-      { id: 2, name: "Carol", x: 20, y: 5, deg: 1, thumb: "thumbs/2.webp", attr: "synthetic" },
+      { id: 0, name: "Alice", x: 0, y: 0, deg: 2, thumb: "thumbs/0.webp", photo: "https://example.com/alice.jpg", attr: "Photo: Wikipedia" },
+      { id: 1, name: "Bob", x: 10, y: 10, deg: 1, thumb: "thumbs/1.webp", photo: null, attr: "synthetic" },
+      { id: 2, name: "Carol", x: 20, y: 5, deg: 1, thumb: "thumbs/2.webp", photo: null, attr: "synthetic" },
     ],
     edges: [
       [0, 1, 0.912],
@@ -66,6 +66,16 @@ describe("getSidebarData", () => {
       { id: 1, name: "Bob", percent: "91.2%" },
       { id: 2, name: "Carol", percent: "50%" },
     ]);
+  });
+
+  it("carries the real photo URL through when the node has one", () => {
+    const sidebar = getSidebarData(sampleData(), 0);
+    expect(sidebar.photo).toBe("https://example.com/alice.jpg");
+  });
+
+  it("carries null through when the node has no real photo", () => {
+    const sidebar = getSidebarData(sampleData(), 1);
+    expect(sidebar.photo).toBeNull();
   });
 
   it("throws for an unknown node id", () => {
