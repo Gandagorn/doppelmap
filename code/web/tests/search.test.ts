@@ -9,7 +9,7 @@ function node(id: number, name: string): GraphNode {
 const NODES = [
   node(0, "Tom Hanks"),
   node(1, "Tom Holland"),
-  node(2, "Beyonce"),
+  node(2, "Beyoncé"),
   node(3, "Bad Bunny"),
 ];
 
@@ -30,7 +30,7 @@ describe("searchNames", () => {
 
   it("is case-insensitive and diacritic-insensitive", () => {
     const results = searchNames(NODES, "beyonce");
-    expect(results.map((n) => n.name)).toEqual(["Beyonce"]);
+    expect(results.map((n) => n.name)).toEqual(["Beyoncé"]);
   });
 
   it("respects the limit", () => {

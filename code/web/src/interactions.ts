@@ -17,6 +17,15 @@ export function formatSimilarity(weight: number): string {
   return `${Math.round(weight * 1000) / 10}%`;
 }
 
+export function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 export interface SidebarData {
   id: number;
   name: string;

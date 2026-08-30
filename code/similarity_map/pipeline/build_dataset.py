@@ -19,6 +19,8 @@ DEFAULT_OUT = Path(__file__).resolve().parents[2] / "web" / "public" / "data"
 
 
 def build_dataset(*, count: int, k: int, seed: int, out_dir: Path) -> dict:
+    if count <= 0:
+        raise ValueError(f"count must be positive, got {count}")
     names = CELEBRITY_NAMES[:count]
     if len(names) < count:
         raise ValueError(

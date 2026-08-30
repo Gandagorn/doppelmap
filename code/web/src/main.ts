@@ -2,7 +2,7 @@ import Sigma from "sigma";
 import { loadGraphData, buildGraphology } from "./graphData";
 import { getDisplayMode } from "./sigmaSetup";
 import { searchNames } from "./search";
-import { flyToNode, getSidebarData } from "./interactions";
+import { flyToNode, getSidebarData, escapeHtml } from "./interactions";
 
 async function bootstrap() {
   const data = await loadGraphData("/data/graph.json");
@@ -24,6 +24,12 @@ async function bootstrap() {
   };
   const sidebarEl = document.getElementById("sidebar") as HTMLElement;
 
+  function selectNode(id: number) {
+    selection.selectedId = id;
+    flyToNode(renderer, graph, String(id));
+    renderSidebar();
+  }
+
   function renderSidebar() {
     if (selection.selectedId === null) {
       sidebarEl.hidden = true;
@@ -33,28 +39,25 @@ async function bootstrap() {
     const info = getSidebarData(data, selection.selectedId);
     sidebarEl.hidden = false;
     sidebarEl.innerHTML = `
-      <img src="/data/${info.thumb}" width="96" height="96" alt="${info.name}" />
-      <h2>${info.name}</h2>
-      <p class="attr">${info.attr}</p>
+      <img src="/data/${info.thumb}" width="96" height="96" alt="${escapeHtml(info.name)}" />
+      <h2>${escapeHtml(info.name)}</h2>
+      <p class="attr">${escapeHtml(info.attr)}</p>
       <ul class="similar-list">
         ${info.similar
-          .map((s) => `<li data-id="${s.id}">${s.name} — ${s.percent}</li>`)
+          .map((s) => `<li data-id="${s.id}">${escapeHtml(s.name)} — ${s.percent}</li>`)
           .join("")}
       </ul>
     `;
     sidebarEl.querySelectorAll<HTMLLIElement>("li[data-id]").forEach((li) => {
       li.addEventListener("click", () => {
-        selection.selectedId = Number(li.dataset.id);
-        flyToNode(renderer, graph, String(selection.selectedId));
-        renderSidebar();
+        selectNode(Number(li.dataset.id));
       });
     });
   }
 
   renderer.on("clickNode", ({ node }) => {
-    selection.selectedId = Number(node);
-    flyToNode(renderer, graph, node);
-    renderSidebar();
+    resultsEl.innerHTML = "";
+    selectNode(Number(node));
   });
 
   renderer.on("enterNode", ({ node }) => {
@@ -69,12 +72,14 @@ async function bootstrap() {
 
   renderer.on("clickStage", () => {
     selection.selectedId = null;
+    resultsEl.innerHTML = "";
     renderSidebar();
   });
 
   window.addEventListener("keydown", (evt) => {
     if (evt.key === "Escape") {
       selection.selectedId = null;
+      resultsEl.innerHTML = "";
       renderSidebar();
     }
   });
@@ -108,6 +113,20 @@ async function bootstrap() {
     return display;
   });
 
+  // nodeReducer's output is cached and only re-runs on refresh() (which
+  // camera pan/zoom does NOT trigger on its own), so without this the
+  // zoom-dependent label mode would only update by coincidence, e.g. on
+  // hover. Only refresh when the mode actually flips, to avoid a full
+  // reprocess on every pan/zoom tick.
+  let lastDisplayMode = getDisplayMode(renderer.getCamera().ratio);
+  renderer.getCamera().on("updated", () => {
+    const mode = getDisplayMode(renderer.getCamera().ratio);
+    if (mode !== lastDisplayMode) {
+      lastDisplayMode = mode;
+      renderer.refresh({ skipIndexation: true });
+    }
+  });
+
   const searchInput = document.getElementById("search") as HTMLInputElement;
   const resultsEl = document.getElementById("search-results") as HTMLDivElement;
 
@@ -122,11 +141,9 @@ async function bootstrap() {
         item.className = "search-result";
         item.textContent = node.name;
         item.addEventListener("click", () => {
-          selection.selectedId = node.id;
-          flyToNode(renderer, graph, String(node.id));
           resultsEl.innerHTML = "";
           searchInput.value = node.name;
-          renderSidebar();
+          selectNode(node.id);
         });
         resultsEl.appendChild(item);
       }

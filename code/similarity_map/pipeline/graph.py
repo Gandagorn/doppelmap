@@ -16,7 +16,15 @@ def build_knn(embeddings: np.ndarray, k: int) -> tuple[np.ndarray, np.ndarray]:
     nn = NearestNeighbors(n_neighbors=k_query, metric="cosine").fit(embeddings)
     dist, idx = nn.kneighbors(embeddings)
     sim = 1 - dist
-    return idx[:, 1:], sim[:, 1:]
+
+    # sklearn doesn't guarantee the self-match (distance 0) lands at column 0,
+    # so mask it out by row index rather than slicing off column 0.
+    row_indices = np.arange(n)[:, None]
+    is_self = idx == row_indices
+    idx = np.where(is_self, -1, idx)
+    sim = np.where(is_self, -np.inf, sim)
+    order = np.argsort(-sim, axis=1)[:, : k_query - 1]
+    return np.take_along_axis(idx, order, axis=1), np.take_along_axis(sim, order, axis=1)
 
 
 def mutual_knn_edges(
