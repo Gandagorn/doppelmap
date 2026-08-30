@@ -1,5 +1,6 @@
 numpy
 scikit-learn
 umap-learn
+networkx
 pillow>=10.1
 pytest

@@ -19,7 +19,7 @@ from .names import CELEBRITY_NAMES
 from .embeddings import generate_synthetic_embeddings
 from .real_embeddings import load_real_embeddings
 from .graph import build_knn, mutual_knn_edges, directed_similar_lists, mutual_degrees
-from .layout import compute_layout, normalize_coords
+from .layout import compute_layout, normalize_coords, refine_layout_with_forceatlas2
 from .thumbnails import generate_thumbnail
 
 DEFAULT_OUT = Path(__file__).resolve().parents[2] / "web" / "public" / "data"
@@ -42,7 +42,9 @@ def _assemble_graph(
     similar = directed_similar_lists(neighbor_idx, sim)
     deg = mutual_degrees(edges, n=len(names))
 
-    xy = normalize_coords(compute_layout(embeddings, seed=seed))
+    umap_xy = compute_layout(embeddings, seed=seed)
+    refined_xy = refine_layout_with_forceatlas2(umap_xy, edges, seed=seed)
+    xy = normalize_coords(refined_xy)
 
     out_dir.mkdir(parents=True, exist_ok=True)
     thumbs_dir = out_dir / "thumbs"
