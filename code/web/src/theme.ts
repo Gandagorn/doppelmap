@@ -8,11 +8,10 @@ const ACCENT = { light: "#2a78d6", dark: "#3987e5" } as const;
 // light and dark background gradients, so it doesn't need a theme split.
 export const DIM_NODE_COLOR = "#9ca3af";
 
-// The selected node's own color: a warm amber, deliberately far from the
-// accent blue and the dim gray so the selected node itself pops rather
-// than just reading as "less dimmed than its neighbors". Same fixed-value
-// reasoning as DIM_NODE_COLOR above.
-export const SELECTED_NODE_COLOR = "#f0a92e";
+// The selected node's own color: a muted amber, far enough from the
+// accent blue and the dim gray to read as "selected" without shouting.
+// Same fixed-value reasoning as DIM_NODE_COLOR above.
+export const SELECTED_NODE_COLOR = "#c99a5b";
 
 export function nodeColor(isDark: boolean): string {
   return isDark ? ACCENT.dark : ACCENT.light;

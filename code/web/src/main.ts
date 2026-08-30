@@ -37,9 +37,16 @@ async function bootstrap() {
   const walkToggle = document.getElementById("walk-toggle") as HTMLButtonElement;
 
   const initialParams = new URLSearchParams(location.search);
-  const initialLevel = Number(initialParams.get("level"));
-  if (Number.isInteger(initialLevel) && initialLevel >= 0 && initialLevel < LEVEL_FILES.length) {
-    popularitySlider.value = String(initialLevel);
+  const levelParam = initialParams.get("level");
+  if (levelParam !== null) {
+    // Number(null) is 0, not NaN -- checking this only when the param is
+    // actually present, rather than parsing null itself, matters here: a
+    // bare URL with no ?level at all was otherwise silently overriding the
+    // HTML default with level 0.
+    const initialLevel = Number(levelParam);
+    if (Number.isInteger(initialLevel) && initialLevel >= 0 && initialLevel < LEVEL_FILES.length) {
+      popularitySlider.value = String(initialLevel);
+    }
   }
   const initialPersonName = initialParams.get("person");
 
@@ -319,7 +326,7 @@ async function bootstrap() {
       // of at a glance, especially at low degree (small size).
       if (selection.selectedId !== null && nodeId === String(selection.selectedId)) {
         display.color = SELECTED_NODE_COLOR;
-        display.size = attrs.size + 5;
+        display.size = attrs.size + 2;
         display.zIndex = 1;
       }
       return display;
