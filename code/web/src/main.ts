@@ -4,6 +4,7 @@ import { getDisplayMode } from "./sigmaSetup";
 import { searchNames } from "./search";
 import { flyToNode, getSidebarData, escapeHtml } from "./interactions";
 import { DIM_NODE_COLOR } from "./theme";
+import { fetchWikipediaPhoto } from "./wikipediaPhoto";
 
 async function bootstrap() {
   const data = await loadGraphData(`${import.meta.env.BASE_URL}data/graph.json`);
@@ -42,10 +43,10 @@ async function bootstrap() {
       return;
     }
     const info = getSidebarData(data, selection.selectedId);
-    const photoSrc = info.photo ?? `${import.meta.env.BASE_URL}data/${info.thumb}`;
+    const localThumbSrc = `${import.meta.env.BASE_URL}data/${info.thumb}`;
     sidebarEl.hidden = false;
     sidebarEl.innerHTML = `
-      <img src="${escapeHtml(photoSrc)}" width="96" height="96" alt="${escapeHtml(info.name)}" />
+      <img id="sidebar-photo" src="${escapeHtml(localThumbSrc)}" width="96" height="96" alt="${escapeHtml(info.name)}" />
       <h2>${escapeHtml(info.name)}</h2>
       <p class="attr">${escapeHtml(info.attr)}</p>
       <ul class="similar-list">
@@ -58,6 +59,18 @@ async function bootstrap() {
       li.addEventListener("click", () => {
         selectNode(Number(li.dataset.id));
       });
+    });
+
+    // Instant paint with the local placeholder above; swap in the real
+    // photo once (if) it resolves. Guard against the user having selected
+    // a different node before this fetch comes back.
+    const requestedId = selection.selectedId;
+    fetchWikipediaPhoto(info.name).then((url) => {
+      if (url === null || selection.selectedId !== requestedId) return;
+      const img = document.getElementById("sidebar-photo") as HTMLImageElement | null;
+      const attrEl = sidebarEl.querySelector<HTMLParagraphElement>(".attr");
+      if (img) img.src = url;
+      if (attrEl) attrEl.textContent = "Photo: Wikipedia";
     });
   }
 

@@ -3,7 +3,7 @@ import { searchNames } from "../src/search";
 import type { GraphNode } from "../src/types";
 
 function node(id: number, name: string): GraphNode {
-  return { id, name, x: 0, y: 0, deg: 0, thumb: "", photo: null, attr: "" };
+  return { id, name, x: 0, y: 0, deg: 0, thumb: "", attr: "" };
 }
 
 const NODES = [

@@ -5,7 +5,6 @@ export interface GraphNode {
   y: number;
   deg: number;
   thumb: string;
-  photo: string | null;
   attr: string;
 }
 
