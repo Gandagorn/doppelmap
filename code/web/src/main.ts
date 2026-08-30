@@ -5,7 +5,7 @@ import { searchNames } from "./search";
 import { flyToNode, getSidebarData, escapeHtml } from "./interactions";
 
 async function bootstrap() {
-  const data = await loadGraphData("/data/graph.json");
+  const data = await loadGraphData(`${import.meta.env.BASE_URL}data/graph.json`);
   const graph = buildGraphology(data);
 
   const container = document.getElementById("graph-container");
@@ -42,7 +42,7 @@ async function bootstrap() {
     const info = getSidebarData(data, selection.selectedId);
     sidebarEl.hidden = false;
     sidebarEl.innerHTML = `
-      <img src="/data/${info.thumb}" width="96" height="96" alt="${escapeHtml(info.name)}" />
+      <img src="${import.meta.env.BASE_URL}data/${info.thumb}" width="96" height="96" alt="${escapeHtml(info.name)}" />
       <h2>${escapeHtml(info.name)}</h2>
       <p class="attr">${escapeHtml(info.attr)}</p>
       <ul class="similar-list">
