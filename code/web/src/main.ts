@@ -22,6 +22,7 @@ async function bootstrap() {
   const isDark = window.matchMedia?.("(prefers-color-scheme: dark)").matches ?? false;
 
   const sidebarEl = document.getElementById("sidebar") as HTMLElement;
+  const toolbarEl = document.getElementById("toolbar") as HTMLElement;
   const searchInput = document.getElementById("search") as HTMLInputElement;
   const resultsEl = document.getElementById("search-results") as HTMLDivElement;
   const popularitySlider = document.getElementById("popularity-slider") as HTMLInputElement;
@@ -201,11 +202,33 @@ async function bootstrap() {
     });
   }
 
+  /** Centre of the canvas area not covered by UI, in viewport pixels.
+   *
+   *  Measured from the live elements rather than derived from the
+   *  breakpoint, so it follows the CSS: the sidebar is a right-hand panel
+   *  on desktop and a bottom sheet on mobile, and its height there (55vh)
+   *  would otherwise hide anything the camera centred. */
+  function visibleCentre(): { x: number; y: number } {
+    const { width, height } = renderer.getDimensions();
+    const top = toolbarEl.getBoundingClientRect().bottom;
+    if (sidebarEl.hidden) return { x: width / 2, y: (top + height) / 2 };
+
+    const sidebar = sidebarEl.getBoundingClientRect();
+    // A bottom sheet spans the full width; the desktop sidebar is docked
+    // right and leaves the canvas to its left.
+    if (sidebar.width >= width * 0.9) {
+      return { x: width / 2, y: (top + sidebar.top) / 2 };
+    }
+    return { x: sidebar.left / 2, y: (top + height) / 2 };
+  }
+
   function selectNode(id: number) {
     selection.selectedId = id;
     resultsEl.innerHTML = "";
-    flyToNode(renderer, String(id));
+    // Sidebar first: visibleCentre() measures it, so it has to be on
+    // screen and laid out before the camera target is computed.
     renderSidebar();
+    flyToNode(renderer, String(id), visibleCentre());
     // nodeReducer/edgeReducer output is cached and only re-evaluated on
     // refresh() -- the mouse hovering the graph triggers that incidentally
     // (enterNode/leaveNode both call it), which is why a manual click

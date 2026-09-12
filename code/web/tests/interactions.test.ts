@@ -36,7 +36,7 @@ describe("flyToNode", () => {
       getCamera: () => ({ animate }),
     } as unknown as Sigma;
 
-    flyToNode(renderer, "5", 500);
+    flyToNode(renderer, "5");
 
     expect(animate).toHaveBeenCalledWith({ x: 0.9104, y: 0.7352, ratio: 0.15 }, { duration: 500 });
   });
@@ -47,7 +47,32 @@ describe("flyToNode", () => {
       getCamera: () => ({ animate: vi.fn() }),
     } as unknown as Sigma;
 
-    expect(() => flyToNode(renderer, "unknown", 500)).toThrow();
+    expect(() => flyToNode(renderer, "unknown")).toThrow();
+  });
+
+  it("offsets the camera so the node lands on the requested screen point", () => {
+    // The mobile sidebar covers the bottom half, so the node should end up
+    // in the upper half of the canvas rather than dead centre -- which
+    // means the camera itself sits *below* the node.
+    const animate = vi.fn();
+    // Stand-in for Sigma's conversion: 1 graph unit per 1000px at this
+    // zoom, y growing downward the same way the viewport does.
+    const viewportToGraph = ({ x, y }: { x: number; y: number }) => ({
+      x: x / 1000,
+      y: y / 1000,
+    });
+    const renderer = {
+      getNodeDisplayData: () => ({ x: 0.5, y: 0.5 }),
+      getCamera: () => ({ animate, getState: () => ({ x: 0, y: 0, ratio: 1, angle: 0 }) }),
+      getDimensions: () => ({ width: 400, height: 800 }),
+      viewportToGraph,
+    } as unknown as Sigma;
+
+    flyToNode(renderer, "5", { x: 200, y: 200 });
+
+    // Focus is 200px above the viewport centre (400), i.e. -0.2 graph
+    // units, so the camera moves +0.2 to push the node up the screen.
+    expect(animate).toHaveBeenCalledWith({ x: 0.5, y: 0.7, ratio: 0.15 }, { duration: 500 });
   });
 });
 
