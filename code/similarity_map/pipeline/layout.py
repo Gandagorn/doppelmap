@@ -1,10 +1,8 @@
-"""2-D layout for the similarity graph: UMAP for global structure, refined
-with sparse neighbor-attraction on the mutual-kNN graph so edge length
-reflects graph distance, normalized to a fixed canvas.
+"""2-D layout for the similarity graph: UMAP, a soft pull-in of the extreme
+outliers, then normalization to a fixed canvas.
 """
 import numpy as np
 import umap
-from scipy.sparse import csr_matrix
 
 
 def compute_layout(
@@ -29,65 +27,22 @@ def compute_layout(
     return reducer.fit_transform(embeddings)
 
 
-def refine_layout_with_neighbor_attraction(
-    xy: np.ndarray,
-    edges: list[tuple[int, int, float]],
-    *,
-    iterations: int = 100,
-    attraction_strength: float = 0.2,
+def compress_outliers(
+    xy: np.ndarray, *, max_radius_percentile: float = 95.0, tail: float = 0.35
 ) -> np.ndarray:
-    """Refines a UMAP layout by repeatedly nudging each node toward the
-    similarity-weighted centroid of its mutual-kNN neighbors. UMAP preserves
-    local neighborhoods well in the original high-dimensional space, but its
-    2D projection can still place a directly-connected pair far apart --
-    this pulls connected nodes together so 2D distance actually reflects
-    graph distance. Nodes with no edges are left exactly where UMAP put them
-    -- see clamp_outliers for handling those (a "pull isolated nodes toward
-    the centroid too" gravity term was tried and measurably does NOT fix
-    far-flung isolated nodes: it shrinks the attraction-connected cluster
-    just as fast as it shrinks isolated nodes, so after normalize_coords
-    rescales to fill the canvas again, the relative outlier problem is
-    unchanged or worse).
+    """Softly reins in the furthest-out points: anything beyond the given
+    percentile radius keeps its direction from the centroid but has its
+    *excess* distance scaled down by `tail`.
 
-    An earlier version used ForceAtlas2 (all-pairs repulsion each
-    iteration), which is O(n^2) per iteration -- fine at a few hundred
-    nodes, but ~37 minutes extrapolated at 10,000 (measured 203s at 3,000).
-    This is O(iterations * edges) via a sparse adjacency matvec each step,
-    so it scales to real dataset sizes.
-    """
-    n = xy.shape[0]
-    if not edges:
-        return xy.copy()
-
-    rows: list[int] = []
-    cols: list[int] = []
-    vals: list[float] = []
-    for a, b, w in edges:
-        rows += [a, b]
-        cols += [b, a]
-        vals += [w, w]
-    adjacency = csr_matrix((vals, (rows, cols)), shape=(n, n))
-    degree = np.asarray(adjacency.sum(axis=1)).flatten()
-    has_neighbors = degree > 0
-    safe_degree = np.where(has_neighbors, degree, 1.0)
-
-    pos = xy.astype(np.float64).copy()
-    for _ in range(iterations):
-        centroid = (adjacency @ pos) / safe_degree[:, None]
-        delta = attraction_strength * (centroid - pos)
-        delta[~has_neighbors] = 0.0
-        pos = pos + delta
-    return pos
-
-
-def clamp_outliers(xy: np.ndarray, *, max_radius_percentile: float = 95.0) -> np.ndarray:
-    """Caps how far from the layout's centroid any point can end up: points
-    beyond the given percentile radius are pulled straight in to sit
-    exactly on it, preserving their direction from the centroid. Directly
-    fixes far-flung outliers (measured on real data: isolated nodes ended
-    up with a median distance-from-centroid more than double the connected
-    nodes') without the side effects gravity has (see
-    refine_layout_with_neighbor_attraction's docstring).
+    An earlier version pinned outliers to sit exactly on the percentile
+    radius. That put 5% of all nodes (66 of 1,330 at the top20 level) at
+    one identical distance from the centre -- a visible hard ring of dots
+    around the map, which was a large part of why the layout read as "a
+    stretched circle". Compressing the tail instead keeps outliers ordered
+    relative to each other and leaves no hard edge: measured rim (share of
+    nodes within 0.1% of the maximum radius) drops from ~4.9% to ~0.2%,
+    while the furthest point still comes in from 1.09x the p95 radius to
+    1.03x.
     """
     if xy.shape[0] < 2:
         return xy.copy()
@@ -96,8 +51,10 @@ def clamp_outliers(xy: np.ndarray, *, max_radius_percentile: float = 95.0) -> np
     distances = np.linalg.norm(offsets, axis=1)
     max_radius = np.percentile(distances, max_radius_percentile)
     safe_distances = np.where(distances == 0, 1.0, distances)
-    scale = np.minimum(1.0, max_radius / safe_distances)
-    return centroid + offsets * scale[:, None]
+    compressed = np.where(
+        distances <= max_radius, distances, max_radius + (distances - max_radius) * tail
+    )
+    return centroid + offsets * (compressed / safe_distances)[:, None]
 
 
 def normalize_coords(xy: np.ndarray, canvas_size: float = 10000.0) -> np.ndarray:

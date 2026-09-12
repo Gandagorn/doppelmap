@@ -17,12 +17,7 @@ import numpy as np
 
 from .real_embeddings import filter_prototypes, load_popularity, load_real_embeddings
 from .graph import build_knn, mutual_knn_edges, directed_similar_lists, mutual_degrees
-from .layout import (
-    clamp_outliers,
-    compute_layout,
-    normalize_coords,
-    refine_layout_with_neighbor_attraction,
-)
+from .layout import compress_outliers, compute_layout, normalize_coords
 from .thumbnails import generate_thumbnail
 
 DEFAULT_OUT = Path(__file__).resolve().parents[2] / "web" / "public" / "data"
@@ -76,10 +71,15 @@ def _assemble_graph(
     similar = directed_similar_lists(neighbor_idx[:, :similar_k], sim[:, :similar_k])
     deg = mutual_degrees(edges, n=len(names))
 
-    umap_xy = compute_layout(embeddings, seed=seed)
-    refined_xy = refine_layout_with_neighbor_attraction(umap_xy, edges)
-    refined_xy = clamp_outliers(refined_xy)
-    xy = normalize_coords(refined_xy)
+    # UMAP's own output is used directly. An attraction pass used to run
+    # here to pull connected nodes together, but measured against the real
+    # data it did the opposite of its purpose: it collapsed everything into
+    # a dense core, and the share of a node's graph neighbours that are
+    # also among its 10 nearest neighbours *on screen* fell from 0.234 to
+    # 0.083 at the top20 level (0.085 -> 0.035 across all 6,537). Shrinking
+    # the distance to real neighbours doesn't help when the distance to
+    # everyone else shrinks just as much.
+    xy = normalize_coords(compress_outliers(compute_layout(embeddings, seed=seed)))
 
     out_dir.mkdir(parents=True, exist_ok=True)
     thumbs_dir = out_dir / "thumbs"
