@@ -364,6 +364,164 @@ body {
   color: var(--text-muted);
   font-variant-numeric: tabular-nums;
 }
+.row-compare {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  border: 1px solid var(--border);
+  background: none;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  /* Revealed on row hover on desktop to keep the list calm; always shown
+     on touch, where there is no hover to reveal it. */
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+.similar-list li:hover .row-compare,
+.row-compare:focus-visible {
+  opacity: 1;
+}
+.row-compare:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+@media (hover: none) {
+  .row-compare {
+    opacity: 1;
+  }
+}
+
+#pair-view {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(8, 12, 20, 0.55);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+}
+#pair-view[hidden] {
+  display: none;
+}
+#pair-card {
+  position: relative;
+  background: var(--bg-panel-solid);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 28px 30px;
+  max-width: 100%;
+  max-height: 100%;
+  overflow-y: auto;
+}
+#pair-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: none;
+  border: none;
+  font: inherit;
+  cursor: pointer;
+  color: var(--text-muted);
+}
+#pair-close:hover {
+  background: var(--accent-soft);
+  color: var(--text);
+}
+#pair-body {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+}
+.pair-side {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.pair-side img {
+  width: 190px;
+  height: 190px;
+  object-fit: cover;
+  object-position: top;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  background: var(--accent-soft);
+}
+.pair-side figcaption {
+  font-size: 14.5px;
+  font-weight: 600;
+  text-align: center;
+  max-width: 190px;
+}
+.pair-goto {
+  border: 1px solid var(--border);
+  background: none;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 12px;
+  padding: 5px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.pair-goto:hover {
+  background: var(--accent-soft);
+  color: var(--text);
+}
+.pair-score {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+.pair-score strong {
+  font-size: 30px;
+  font-weight: 700;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+.pair-score span {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+@media (max-width: 640px) {
+  #pair-card {
+    padding: 24px 18px;
+  }
+  #pair-body {
+    gap: 14px;
+  }
+  .pair-side img {
+    width: 36vw;
+    height: 36vw;
+  }
+  .pair-side figcaption {
+    font-size: 13px;
+    max-width: 36vw;
+  }
+  .pair-score strong {
+    font-size: 22px;
+  }
+  .pair-goto {
+    display: none;
+  }
+}
 #hover-preview {
   position: fixed;
   z-index: 30;

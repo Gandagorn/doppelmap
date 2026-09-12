@@ -30,7 +30,9 @@ export interface SidebarData {
   name: string;
   thumb: string;
   attr: string;
-  similar: { id: number; name: string; percent: string; thumb: string }[];
+  // `weight` is the raw similarity alongside the display-formatted
+  // `percent` -- the pair-comparison view re-formats it itself.
+  similar: { id: number; name: string; percent: string; weight: number; thumb: string }[];
 }
 
 export function getSidebarData(data: GraphData, nodeId: number): SidebarData {
@@ -47,6 +49,7 @@ export function getSidebarData(data: GraphData, nodeId: number): SidebarData {
       id,
       name: nodesById.get(id)?.name ?? "Unknown",
       percent: formatSimilarity(weight),
+      weight,
       thumb: nodesById.get(id)?.thumb ?? "",
     })),
   };

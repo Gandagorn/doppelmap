@@ -5,7 +5,7 @@ import { searchNames } from "./search";
 import { flyToNode, getSidebarData, formatSimilarity, escapeHtml } from "./interactions";
 import { DIM_NODE_COLOR, SELECTED_NODE_COLOR } from "./theme";
 import { fetchWikipediaInfo } from "./wikipediaPhoto";
-import type { GraphData } from "./types";
+import type { GraphData, GraphNode } from "./types";
 
 // Each popularity level is its own precomputed dataset (own kNN graph, own
 // layout) rather than a filtered view of one big graph -- see
@@ -35,6 +35,9 @@ async function bootstrap() {
   const aboutPanel = document.getElementById("about-panel") as HTMLElement;
   const aboutClose = document.getElementById("about-close") as HTMLButtonElement;
   const walkToggle = document.getElementById("walk-toggle") as HTMLButtonElement;
+  const pairView = document.getElementById("pair-view") as HTMLElement;
+  const pairBody = document.getElementById("pair-body") as HTMLElement;
+  const pairClose = document.getElementById("pair-close") as HTMLButtonElement;
 
   const initialParams = new URLSearchParams(location.search);
   const levelParam = initialParams.get("level");
@@ -130,6 +133,9 @@ async function bootstrap() {
                 <img class="row-thumb" src="${escapeHtml(localThumbSrc(s.thumb))}" width="36" height="36" alt="" />
                 <span class="row-name">${escapeHtml(s.name)}</span>
                 <span class="row-percent">${s.percent}</span>
+                <button class="row-compare" type="button" data-compare="${s.id}"
+                        data-w="${s.weight}" title="Compare faces side by side"
+                        aria-label="Compare with ${escapeHtml(s.name)}">⇄</button>
               </li>`
           )
           .join("")}
@@ -161,6 +167,15 @@ async function bootstrap() {
       });
       li.addEventListener("mouseleave", () => {
         hoverPreview.hidden = true;
+      });
+      const compare = li.querySelector<HTMLButtonElement>("button[data-compare]");
+      compare?.addEventListener("click", (evt) => {
+        // Without this the row's own click handler also fires and navigates
+        // away from the person we're trying to compare against.
+        evt.stopPropagation();
+        hoverPreview.hidden = true;
+        if (selection.selectedId === null) return;
+        showPair(selection.selectedId, Number(compare.dataset.compare), Number(compare.dataset.w));
       });
     });
 
@@ -244,6 +259,53 @@ async function bootstrap() {
     return data.nodes[Math.floor(Math.random() * data.nodes.length)].id;
   }
 
+  // The whole point of the site is "these two look alike", but until now
+  // you could only ever see one face at a time -- a pair was rendered as
+  // one photo plus the other person's name as text. This shows both at
+  // once, which is also the thing worth screenshotting.
+  function showPair(idA: number, idB: number, weight: number) {
+    const nodesById = new Map(data.nodes.map((n) => [n.id, n]));
+    const a = nodesById.get(idA);
+    const b = nodesById.get(idB);
+    if (!a || !b) return;
+
+    const side = (n: GraphNode) => `
+      <figure class="pair-side">
+        <img src="${escapeHtml(`${import.meta.env.BASE_URL}data/${n.thumb}`)}"
+             alt="${escapeHtml(n.name)}" data-name="${escapeHtml(n.name)}" />
+        <figcaption>${escapeHtml(n.name)}</figcaption>
+        <button class="pair-goto" type="button" data-goto="${n.id}">View on map</button>
+      </figure>`;
+
+    pairBody.innerHTML = `
+      ${side(a)}
+      <div class="pair-score">
+        <strong>${formatSimilarity(weight)}</strong>
+        <span>similarity</span>
+      </div>
+      ${side(b)}
+    `;
+    pairView.hidden = false;
+
+    // Same instant-placeholder-then-swap pattern the sidebar uses.
+    pairBody.querySelectorAll<HTMLImageElement>("img[data-name]").forEach((img) => {
+      fetchWikipediaInfo(img.dataset.name ?? "").then((wiki) => {
+        if (wiki.photoUrl) img.src = wiki.photoUrl;
+      });
+    });
+    pairBody.querySelectorAll<HTMLButtonElement>("button[data-goto]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        closePair();
+        selectNodeManually(Number(btn.dataset.goto));
+      });
+    });
+  }
+
+  function closePair() {
+    pairView.hidden = true;
+    pairBody.innerHTML = "";
+  }
+
   function renderDashboard() {
     const nodesById = new Map(data.nodes.map((n) => [n.id, n]));
     const topPairs = [...data.edges].sort((a, b) => b[2] - a[2]).slice(0, 50);
@@ -251,12 +313,14 @@ async function bootstrap() {
       .map(([a, b, w]) => {
         const nameA = nodesById.get(a)?.name ?? "Unknown";
         const nameB = nodesById.get(b)?.name ?? "Unknown";
-        return `<li data-id="${a}">${escapeHtml(nameA)} ↔ ${escapeHtml(nameB)} (${formatSimilarity(w)})</li>`;
+        return `<li data-a="${a}" data-b="${b}" data-w="${w}">${escapeHtml(nameA)} ↔ ${escapeHtml(nameB)} (${formatSimilarity(w)})</li>`;
       })
       .join("");
-    dashboardListEl.querySelectorAll<HTMLLIElement>("li[data-id]").forEach((li) => {
+    dashboardListEl.querySelectorAll<HTMLLIElement>("li[data-a]").forEach((li) => {
       li.addEventListener("click", () => {
-        selectNodeManually(Number(li.dataset.id));
+        // A dashboard row *is* a pair -- it used to just select one half and
+        // drop the other, which threw away the comparison being pointed at.
+        showPair(Number(li.dataset.a), Number(li.dataset.b), Number(li.dataset.w));
         dashboardEl.hidden = true;
       });
     });
@@ -378,9 +442,20 @@ async function bootstrap() {
   }
 
   window.addEventListener("keydown", (evt) => {
-    if (evt.key === "Escape") {
+    if (evt.key !== "Escape") return;
+    // Escape closes the topmost thing first rather than always clearing the
+    // selection underneath the pair view.
+    if (!pairView.hidden) {
+      closePair();
+    } else {
       deselectManually();
     }
+  });
+
+  pairClose.addEventListener("click", closePair);
+  pairView.addEventListener("click", (evt) => {
+    // Backdrop only -- clicks inside the card shouldn't dismiss it.
+    if (evt.target === pairView) closePair();
   });
 
   popularitySlider.addEventListener("input", () => {
