@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { buildGraphology } from "../src/graphData";
-import type { GraphData } from "../src/types";
+import { buildGraphology, edgeStrengthScale } from "../src/graphData";
+import type { GraphData, GraphEdge } from "../src/types";
 
 function sampleData(): GraphData {
   return {
@@ -55,9 +55,15 @@ describe("buildGraphology", () => {
     expect(graph.getNodeAttribute("0", "color")).toBe("#3987e5");
   });
 
-  it("colors edges with a translucent accent matching the theme", () => {
+  it("draws the stronger edge more opaque and thicker than the weaker one", () => {
     const graph = buildGraphology(sampleData(), false);
-    expect(graph.getEdgeAttribute("0", "1", "color")).toBe("rgba(42, 120, 214, 0.35)");
+    const strong = graph.getEdgeAttribute("0", "1", "color") as string; // weight 0.9
+    const weak = graph.getEdgeAttribute("0", "2", "color") as string; // weight 0.5
+    const alphaOf = (rgba: string) => Number(rgba.slice(rgba.lastIndexOf(",") + 1, -1));
+    expect(alphaOf(strong)).toBeGreaterThan(alphaOf(weak));
+    expect(graph.getEdgeAttribute("0", "1", "size")).toBeGreaterThan(
+      graph.getEdgeAttribute("0", "2", "size") as number
+    );
   });
 
   it("sizes nodes smaller than the previous formula, still scaling with degree", () => {
@@ -66,5 +72,40 @@ describe("buildGraphology", () => {
     const degTwo = graph.getNodeAttribute("0", "size"); // deg: 2
     expect(degZero).toBeLessThan(3); // old formula's minimum was 3 (deg=0)
     expect(degTwo).toBeGreaterThan(degZero); // still grows with degree
+  });
+});
+
+describe("edgeStrengthScale", () => {
+  const edges = (weights: number[]): GraphEdge[] => weights.map((w, i) => [0, i + 1, w]);
+
+  it("spreads a narrow real-world weight band across the full 0..1 range", () => {
+    // Mirrors the actual distribution: everything inside ~0.22-0.29, which
+    // a fixed 0..1 scale would render as one indistinguishable value.
+    const scale = edgeStrengthScale(edges([0.22, 0.24, 0.26, 0.28, 0.29]));
+    expect(scale(0.22)).toBeLessThan(0.1);
+    expect(scale(0.29)).toBeGreaterThan(0.9);
+    expect(scale(0.26)).toBeGreaterThan(0.3);
+    expect(scale(0.26)).toBeLessThan(0.7);
+  });
+
+  it("keeps one extreme outlier from compressing the rest", () => {
+    // 20 ordinary edges packed into 0.20-0.26 plus one 0.99 pair. The
+    // sample size matters: percentile bounds can only exclude an outlier
+    // when there are enough points for p95 to fall below the maximum, so
+    // this mirrors the real datasets (3.5k-17k edges) rather than a
+    // handful. The ordinary edges must still spread across the range
+    // instead of all collapsing toward 0.
+    const ordinary = Array.from({ length: 20 }, (_, i) => 0.2 + i * (0.06 / 19));
+    const scale = edgeStrengthScale(edges([...ordinary, 0.99]));
+    expect(scale(0.26) - scale(0.2)).toBeGreaterThan(0.5);
+    expect(scale(0.99)).toBe(1); // clamped, not off the top of the scale
+  });
+
+  it("returns full strength when every edge has the same weight", () => {
+    expect(edgeStrengthScale(edges([0.3, 0.3, 0.3]))(0.3)).toBe(1);
+  });
+
+  it("handles an empty edge list", () => {
+    expect(edgeStrengthScale([])(0.5)).toBe(1);
   });
 });
