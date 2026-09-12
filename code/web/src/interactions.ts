@@ -27,17 +27,25 @@ export function flyToNode(
   let { x, y } = display;
 
   if (focus) {
+    // viewportToFramedGraph, NOT viewportToGraph. Same trap as the display
+    // coordinates above: viewportToGraph runs the result back through
+    // normalizationFunction.inverse and hands back raw graph.json units
+    // (our [0,10000] canvas), which are meaningless as a camera offset --
+    // subtracting one from a ~0.5 camera coordinate throws the view
+    // thousands of units off and the graph disappears entirely. The
+    // "framed" space is the normalized one the camera actually lives in.
+    //
     // Converting at the *target* camera state, not the current one: the
-    // graph-space size of a pixel depends on the zoom we're flying to, so
-    // measuring at the current zoom would offset by the wrong amount
+    // size of a pixel in that space depends on the zoom we're flying to,
+    // so measuring at the current zoom would offset by the wrong amount
     // whenever this changes the zoom level (which it usually does).
     const targetState = { ...camera.getState(), x: display.x, y: display.y, ratio: FOCUS_RATIO };
     const { width, height } = renderer.getDimensions();
-    const atCentre = renderer.viewportToGraph(
+    const atCentre = renderer.viewportToFramedGraph(
       { x: width / 2, y: height / 2 },
       { cameraState: targetState }
     );
-    const atFocus = renderer.viewportToGraph(focus, { cameraState: targetState });
+    const atFocus = renderer.viewportToFramedGraph(focus, { cameraState: targetState });
     // Shifting the camera the opposite way moves the node toward `focus`.
     x -= atFocus.x - atCentre.x;
     y -= atFocus.y - atCentre.y;

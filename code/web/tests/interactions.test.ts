@@ -55,17 +55,20 @@ describe("flyToNode", () => {
     // in the upper half of the canvas rather than dead centre -- which
     // means the camera itself sits *below* the node.
     const animate = vi.fn();
-    // Stand-in for Sigma's conversion: 1 graph unit per 1000px at this
-    // zoom, y growing downward the same way the viewport does.
-    const viewportToGraph = ({ x, y }: { x: number; y: number }) => ({
-      x: x / 1000,
-      y: y / 1000,
-    });
+    // Stand-in for Sigma's conversion into its normalized "framed graph"
+    // space: 1 unit per 1000px at this zoom, y growing downward like the
+    // viewport. viewportToGraph is deliberately given a wildly different
+    // scale -- it returns raw graph.json units in the real API, and using
+    // it here sent the camera off into nowhere.
     const renderer = {
       getNodeDisplayData: () => ({ x: 0.5, y: 0.5 }),
       getCamera: () => ({ animate, getState: () => ({ x: 0, y: 0, ratio: 1, angle: 0 }) }),
       getDimensions: () => ({ width: 400, height: 800 }),
-      viewportToGraph,
+      viewportToFramedGraph: ({ x, y }: { x: number; y: number }) => ({
+        x: x / 1000,
+        y: y / 1000,
+      }),
+      viewportToGraph: ({ x, y }: { x: number; y: number }) => ({ x: x * 25, y: y * 25 }),
     } as unknown as Sigma;
 
     flyToNode(renderer, "5", { x: 200, y: 200 });
