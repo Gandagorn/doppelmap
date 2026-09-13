@@ -8,21 +8,31 @@ const THUMB_WIDTH = 192; // 2x the 96px display size, for retina
 export interface WikipediaInfo {
   photoUrl: string | null;
   pageUrl: string | null;
+  /** Wikipedia's own one-line summary, e.g. "American actor and
+   *  filmmaker (born 1956)". Comes back on the same request as the
+   *  photo, so it costs nothing extra. */
+  description: string | null;
 }
 
-const NO_INFO: WikipediaInfo = { photoUrl: null, pageUrl: null };
+const NO_INFO: WikipediaInfo = { photoUrl: null, pageUrl: null, description: null };
 
 export function wikipediaInfoFromApiResponse(data: unknown): WikipediaInfo {
   const pages = (data as { query?: { pages?: Record<string, unknown> } } | null | undefined)
     ?.query?.pages;
   if (!pages) return NO_INFO;
   for (const page of Object.values(pages)) {
-    const p = page as { thumbnail?: { source?: unknown }; fullurl?: unknown };
+    const p = page as {
+      thumbnail?: { source?: unknown };
+      fullurl?: unknown;
+      description?: unknown;
+    };
     const source = p?.thumbnail?.source;
     const fullurl = p?.fullurl;
+    const description = p?.description;
     return {
       photoUrl: typeof source === "string" ? source : null,
       pageUrl: typeof fullurl === "string" ? fullurl : null,
+      description: typeof description === "string" ? description : null,
     };
   }
   return NO_INFO;
@@ -36,7 +46,7 @@ const cache = new Map<string, Promise<WikipediaInfo>>();
 async function queryWikipedia(extra: Record<string, string>): Promise<WikipediaInfo> {
   const params = new URLSearchParams({
     action: "query",
-    prop: "pageimages|info",
+    prop: "pageimages|info|description",
     inprop: "url",
     format: "json",
     pithumbsize: String(THUMB_WIDTH),

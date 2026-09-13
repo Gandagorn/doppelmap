@@ -126,6 +126,7 @@ async function bootstrap() {
       <img id="sidebar-photo" src="${escapeHtml(localThumbSrc(info.thumb))}" width="160" height="160" alt="${escapeHtml(info.name)}" />
       <h2>${escapeHtml(info.name)}</h2>
       <p class="attr">${escapeHtml(info.attr)}</p>
+      <p class="known-for" hidden></p>
       <ul class="similar-list">
         ${info.similar
           .map(
@@ -197,6 +198,15 @@ async function bootstrap() {
         const attrEl = sidebarEl.querySelector<HTMLParagraphElement>(".attr");
         if (attrEl) {
           attrEl.innerHTML = `Photo: <a href="${escapeHtml(wiki.pageUrl)}" target="_blank" rel="noopener noreferrer">Wikipedia</a>`;
+        }
+      }
+      // Wikipedia's own one-liner ("American actor and filmmaker"), which
+      // answers the question every unfamiliar name on this map raises.
+      if (wiki.description) {
+        const descEl = sidebarEl.querySelector<HTMLParagraphElement>(".known-for");
+        if (descEl) {
+          descEl.textContent = wiki.description;
+          descEl.hidden = false;
         }
       }
     });

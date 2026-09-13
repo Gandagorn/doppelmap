@@ -601,3 +601,16 @@ body {
     clear: both;
   }
 }
+
+/* Wikipedia's one-line summary of who this person is, filled in once the
+   lookup resolves -- hidden until then so the sidebar doesn't reserve an
+   empty gap for people who have no description. */
+.known-for {
+  margin: -12px 0 18px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text);
+}
+.known-for[hidden] {
+  display: none;
+}

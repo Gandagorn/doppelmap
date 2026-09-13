@@ -10,6 +10,7 @@ describe("wikipediaInfoFromApiResponse", () => {
             title: "Tom Hanks",
             thumbnail: { source: "https://upload.wikimedia.org/x.jpg", width: 192, height: 266 },
             fullurl: "https://en.wikipedia.org/wiki/Tom_Hanks",
+            description: "American actor and filmmaker (born 1956)",
           },
         },
       },
@@ -17,6 +18,7 @@ describe("wikipediaInfoFromApiResponse", () => {
     expect(wikipediaInfoFromApiResponse(data)).toEqual({
       photoUrl: "https://upload.wikimedia.org/x.jpg",
       pageUrl: "https://en.wikipedia.org/wiki/Tom_Hanks",
+      description: "American actor and filmmaker (born 1956)",
     });
   });
 
@@ -31,17 +33,23 @@ describe("wikipediaInfoFromApiResponse", () => {
     expect(wikipediaInfoFromApiResponse(data)).toEqual({
       photoUrl: null,
       pageUrl: "https://en.wikipedia.org/wiki/Someone",
+      description: null,
     });
   });
 
   it("returns nulls when the matched page has neither", () => {
     const data = { query: { pages: { "-1": { title: "Nonexistent Person" } } } };
-    expect(wikipediaInfoFromApiResponse(data)).toEqual({ photoUrl: null, pageUrl: null });
+    expect(wikipediaInfoFromApiResponse(data)).toEqual({
+      photoUrl: null,
+      pageUrl: null,
+      description: null,
+    });
   });
 
   it("returns nulls for a malformed or empty response", () => {
-    expect(wikipediaInfoFromApiResponse({})).toEqual({ photoUrl: null, pageUrl: null });
-    expect(wikipediaInfoFromApiResponse(null)).toEqual({ photoUrl: null, pageUrl: null });
-    expect(wikipediaInfoFromApiResponse(undefined)).toEqual({ photoUrl: null, pageUrl: null });
+    const empty = { photoUrl: null, pageUrl: null, description: null };
+    expect(wikipediaInfoFromApiResponse({})).toEqual(empty);
+    expect(wikipediaInfoFromApiResponse(null)).toEqual(empty);
+    expect(wikipediaInfoFromApiResponse(undefined)).toEqual(empty);
   });
 });
