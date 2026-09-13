@@ -236,7 +236,20 @@ def build_dataset_from_commons(
     if len(names) < 2:
         raise ValueError(f"only {len(names)} usable people in {directory}")
 
-    embeddings = np.stack([prototypes[n] for n in names])
+    # Subtract the average face before comparing anyone.
+    #
+    # ArcFace vectors all share a large "generic human face" component, so raw
+    # cosines sit in a narrow band and the ranking is dominated by whatever is
+    # common to everyone rather than by what makes two people look alike.
+    # Centring on the mean of the population removes it, which is what the
+    # method-evaluation notebook scored its candidates in.
+    mean_face = np.stack([prototypes[n] for n in names]).mean(axis=0)
+
+    def centred(vectors: np.ndarray) -> np.ndarray:
+        out = vectors - mean_face
+        return out / np.maximum(np.linalg.norm(out, axis=-1, keepdims=True), 1e-9)
+
+    embeddings = centred(np.stack([prototypes[n] for n in names]))
     neighbor_idx, sim = build_knn(embeddings, k=max(k, similar_k))
     edges = mutual_knn_edges(neighbor_idx[:, :k], sim[:, :k])
     similar = directed_similar_lists(neighbor_idx[:, :similar_k], sim[:, :similar_k])
@@ -284,7 +297,7 @@ def build_dataset_from_commons(
     for i, name in enumerate(names):
         row = []
         for other, weight in similar[i]:
-            match = best_matching_faces(by_index[name], by_index[names[other]])
+            match = best_matching_faces(by_index[name], by_index[names[other]], mean_face)
             if match is None:
                 row.append([other, weight, 0, 0])
                 continue

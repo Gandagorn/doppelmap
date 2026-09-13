@@ -158,7 +158,7 @@ def load_commons_embeddings(
 
 
 def best_matching_faces(
-    a: list[PersonFace], b: list[PersonFace]
+    a: list[PersonFace], b: list[PersonFace], mean_face: np.ndarray | None = None
 ) -> tuple[float, PersonFace, PersonFace] | None:
     """The most similar photo-to-photo pairing between two people.
 
@@ -171,10 +171,22 @@ def best_matching_faces(
     both: without them Charles III and Elizabeth II match at 1.000 on one
     shared family portrait, and Barron and Donald Trump at 0.766 on a face
     of Donald sitting inside Barron's gallery.
+
+    Pass the population's mean face to compare the same way the graph does,
+    with the generic-face component removed; otherwise the pair shown can
+    disagree with the ranking that surfaced it.
     """
     if not a or not b:
         return None
-    similarity = np.stack([f.embedding for f in a]) @ np.stack([f.embedding for f in b]).T
+
+    def vectors(faces: list[PersonFace]) -> np.ndarray:
+        X = np.stack([f.embedding for f in faces])
+        if mean_face is None:
+            return X
+        X = X - mean_face
+        return X / np.maximum(np.linalg.norm(X, axis=1, keepdims=True), 1e-9)
+
+    similarity = vectors(a) @ vectors(b).T
     for i, fa in enumerate(a):
         for j, fb in enumerate(b):
             if fa.record.get("title") and fa.record["title"] == fb.record.get("title"):
