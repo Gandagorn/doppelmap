@@ -106,18 +106,25 @@ describe("getSidebarData", () => {
 
 describe("resemblanceBand", () => {
   it("names each band by its score", () => {
-    expect(resemblanceBand(0.6)).toBe("Lookalike");
-    expect(resemblanceBand(0.35)).toBe("Lookalike");
-    expect(resemblanceBand(0.3)).toBe("Looks somewhat alike");
-    expect(resemblanceBand(0.25)).toBe("Looks somewhat alike");
-    expect(resemblanceBand(0.2)).toBe("Far resemblance");
+    expect(resemblanceBand(0.6)?.label).toBe("Lookalike");
+    expect(resemblanceBand(0.3)?.label).toBe("Lookalike");
+    expect(resemblanceBand(0.29)?.label).toBe("Looks somewhat alike");
+    expect(resemblanceBand(0.22)?.label).toBe("Looks somewhat alike");
+    expect(resemblanceBand(0.21)?.label).toBe("Far resemblance");
+    expect(resemblanceBand(0.14)?.label).toBe("Far resemblance");
+  });
+
+  it("carries a slug so styling never matches on the wording", () => {
+    expect(resemblanceBand(0.4)?.slug).toBe("strong");
+    expect(resemblanceBand(0.25)?.slug).toBe("medium");
+    expect(resemblanceBand(0.15)?.slug).toBe("faint");
   });
 
   it("returns null below the floor", () => {
     // Half of all pairs sit between 0.14 and 0.18, where the differences are
     // noise. Showing them as percentages implies a precision that is not there.
-    expect(resemblanceBand(0.179)).toBeNull();
-    expect(resemblanceBand(0.15)).toBeNull();
+    expect(resemblanceBand(0.139)).toBeNull();
+    expect(resemblanceBand(0.1)).toBeNull();
     expect(resemblanceBand(0)).toBeNull();
   });
 });
@@ -126,22 +133,22 @@ describe("groupByResemblance", () => {
   const rows = (...weights: number[]) => weights.map((weight) => ({ weight }));
 
   it("groups a ranked list into labelled runs, strongest first", () => {
-    const groups = groupByResemblance(rows(0.4, 0.3, 0.26, 0.2));
-    expect(groups.map((g) => g.label)).toEqual([
+    const groups = groupByResemblance(rows(0.4, 0.28, 0.24, 0.2));
+    expect(groups.map((g) => g.band.label)).toEqual([
       "Lookalike", "Looks somewhat alike", "Far resemblance",
     ]);
     expect(groups[1].entries).toHaveLength(2);
   });
 
   it("drops everything below the floor", () => {
-    expect(groupByResemblance(rows(0.3, 0.17, 0.16))).toEqual([
-      { label: "Looks somewhat alike", entries: [{ weight: 0.3 }] },
+    expect(groupByResemblance(rows(0.25, 0.13, 0.12))).toEqual([
+      { band: { label: "Looks somewhat alike", slug: "medium" }, entries: [{ weight: 0.25 }] },
     ]);
   });
 
   it("returns nothing when no pair clears the floor", () => {
-    // 72 of 962 people are in this position, so the caller must handle it
-    // rather than assume every node has someone to show.
-    expect(groupByResemblance(rows(0.17, 0.15))).toEqual([]);
+    // No one in the current collection is, but a thinner dataset could be,
+    // so the caller must handle it rather than assume every node has someone.
+    expect(groupByResemblance(rows(0.13, 0.1))).toEqual([]);
   });
 });

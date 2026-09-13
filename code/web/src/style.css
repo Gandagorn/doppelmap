@@ -709,3 +709,54 @@ body {
   line-height: 1.5;
   color: var(--text-muted);
 }
+
+/* Band colour. The slug drives it rather than the wording, so the labels can
+   be reworded without touching the palette. Green reads as "yes, these two
+   really do look alike" against the blue the rest of the interface uses for
+   selection, so the strongest band cannot be mistaken for just another
+   highlighted row. */
+[data-band] {
+  color: var(--band-color);
+}
+[data-band="strong"] {
+  --band-color: #16794a;
+  --band-bg: rgba(22, 121, 74, 0.12);
+}
+[data-band="medium"] {
+  --band-color: #b45309;
+  --band-bg: rgba(180, 83, 9, 0.12);
+}
+[data-band="faint"] {
+  --band-color: var(--text-muted);
+  --band-bg: rgba(100, 116, 139, 0.1);
+}
+@media (prefers-color-scheme: dark) {
+  [data-band="strong"] {
+    --band-color: #4ade80;
+    --band-bg: rgba(74, 222, 128, 0.16);
+  }
+  [data-band="medium"] {
+    --band-color: #fbbf24;
+    --band-bg: rgba(251, 191, 36, 0.16);
+  }
+}
+/* On the comparison card the label is the headline, not a section marker.
+   Qualified with .pair-score so it outranks that block's own `span` rule,
+   which is more specific than the bare [data-band] selector and was
+   repainting every badge the muted grey. */
+.pair-score .pair-band {
+  color: var(--band-color);
+}
+.pair-band {
+  display: inline-block;
+  margin-top: 6px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--band-bg);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.3;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  max-width: 130px;
+}

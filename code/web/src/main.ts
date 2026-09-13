@@ -5,6 +5,7 @@ import { searchNames } from "./search";
 import type { SidebarRow } from "./interactions";
 import {
   flyToNode, getSidebarData, formatSimilarity, escapeHtml, groupByResemblance,
+  resemblanceBand,
 } from "./interactions";
 import { DIM_NODE_COLOR, FADED_EDGE_COLOR, SELECTED_NODE_COLOR } from "./theme";
 import { fetchWikipediaInfo } from "./wikipediaPhoto";
@@ -151,7 +152,7 @@ async function bootstrap() {
     return groups
       .map(
         (g) => `
-        <h3 class="resemblance-band">${escapeHtml(g.label)}</h3>
+        <h3 class="resemblance-band" data-band="${g.band.slug}">${escapeHtml(g.band.label)}</h3>
         <ul class="similar-list">${g.entries.map(row).join("")}</ul>`
       )
       .join("");
@@ -340,11 +341,17 @@ async function bootstrap() {
         </figure>`;
     };
 
+    // The same wording the sidebar groups by, so a score means one thing
+    // everywhere it appears.
+    const band = resemblanceBand(weight);
+
     pairBody.innerHTML = `
       ${side(a, photoA)}
       <div class="pair-score">
         <strong>${formatSimilarity(weight)}</strong>
-        <span>similarity</span>
+        ${band
+          ? `<span class="pair-band" data-band="${band.slug}">${escapeHtml(band.label)}</span>`
+          : `<span>similarity</span>`}
       </div>
       ${side(b, photoB)}
     `;

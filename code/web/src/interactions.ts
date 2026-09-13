@@ -70,40 +70,46 @@ export function escapeHtml(value: string): string {
 /** How a similarity score reads in words.
  *
  *  A raw cosine means nothing to a visitor, and the numbers are packed into
- *  a narrow band -- half of all pairs sit between 0.14 and 0.18 -- so the
- *  difference between 15% and 17% is noise dressed up as precision. The
- *  cuts come from the distribution over all 14,430 ranked pairs: 0.3% reach
- *  0.35, 2.3% reach 0.25, and 20% reach 0.18. Below that there is no
- *  resemblance worth showing.
+ *  a narrow band, so the difference between 15% and 17% is noise dressed up
+ *  as precision. Over the 14,430 ranked pairs in the full collection these
+ *  cuts leave 0.6% Lookalike, 5.7% somewhat alike and 70% a far resemblance,
+ *  hiding the bottom 23.5% -- which is low enough that nobody is left with
+ *  an empty list.
  */
-export const RESEMBLANCE_FLOOR = 0.18;
+export const RESEMBLANCE_FLOOR = 0.14;
 
-const BANDS: { min: number; label: string }[] = [
-  { min: 0.35, label: "Lookalike" },
-  { min: 0.25, label: "Looks somewhat alike" },
-  { min: RESEMBLANCE_FLOOR, label: "Far resemblance" },
+export interface Resemblance {
+  label: string;
+  /** Drives the colour, so CSS never has to match on the wording. */
+  slug: "strong" | "medium" | "faint";
+}
+
+const BANDS: { min: number; band: Resemblance }[] = [
+  { min: 0.3, band: { label: "Lookalike", slug: "strong" } },
+  { min: 0.22, band: { label: "Looks somewhat alike", slug: "medium" } },
+  { min: RESEMBLANCE_FLOOR, band: { label: "Far resemblance", slug: "faint" } },
 ];
 
 /** The band a score falls in, or null when it is below the floor. */
-export function resemblanceBand(weight: number): string | null {
-  return BANDS.find((b) => weight >= b.min)?.label ?? null;
+export function resemblanceBand(weight: number): Resemblance | null {
+  return BANDS.find((b) => weight >= b.min)?.band ?? null;
 }
 
 /** The ranked list split into labelled groups, weakest group last.
  *
- *  Entries below the floor are dropped entirely. 72 of 962 people have
- *  nothing above it, so callers have to handle an empty result rather than
- *  assume every node has someone to show. */
+ *  Entries below the floor are dropped entirely. No one in the current
+ *  collection loses their whole list that way, but a thinner dataset could,
+ *  so callers still have to handle an empty result. */
 export function groupByResemblance<T extends { weight: number }>(
   entries: T[]
-): { label: string; entries: T[] }[] {
-  const groups: { label: string; entries: T[] }[] = [];
+): { band: Resemblance; entries: T[] }[] {
+  const groups: { band: Resemblance; entries: T[] }[] = [];
   for (const entry of entries) {
-    const label = resemblanceBand(entry.weight);
-    if (!label) continue;
+    const band = resemblanceBand(entry.weight);
+    if (!band) continue;
     const last = groups[groups.length - 1];
-    if (last && last.label === label) last.entries.push(entry);
-    else groups.push({ label, entries: [entry] });
+    if (last && last.band.slug === band.slug) last.entries.push(entry);
+    else groups.push({ band, entries: [entry] });
   }
   return groups;
 }
