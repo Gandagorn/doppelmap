@@ -20,6 +20,18 @@ describe("photoUrl", () => {
     );
   });
 
+  it("percent-encodes the quotes that would close the CSS url()", () => {
+    // encodeURIComponent leaves ' ( ) alone. Legal in a URL, fatal inside
+    // url('...'): the apostrophe closed the string and the browser threw the
+    // whole declaration away, so "Barron Trump's ..." rendered as a blank.
+    const url = photoUrl(photo([0, 0, 1, 1], "Barron Trump's inauguration (2).jpg"));
+    expect(url).not.toContain("'");
+    expect(url).toContain("%27");
+    expect(url).toContain("%28");
+    const style = faceCropStyle(photo([0.3, 0.3, 0.5, 0.5], "a's (b).jpg"));
+    expect(style.match(/'/g)).toHaveLength(2); // only url()'s own delimiters
+  });
+
   it("escapes characters that would break the URL", () => {
     // Commons filenames routinely carry brackets, ampersands and accents.
     const url = photoUrl(photo([0, 0, 1, 1], "Beyoncé (crop) & co.jpg"));
@@ -138,5 +150,56 @@ describe("faceCropStyle vertical placement", () => {
     const top = parse(faceCropStyle(photo([0.45, 0.05, 0.65, 0.15], "x.jpg", wide)));
     const bottom = parse(faceCropStyle(photo([0.45, 0.85, 0.65, 0.95], "x.jpg", wide)));
     expect(top.y).toBeLessThan(bottom.y);
+  });
+});
+
+describe("faceCropStyle keeps the whole face in frame", () => {
+  /** Where the visible window lands, in image fractions. */
+  function window_(p: PhotoRef, padding = 0.55) {
+    const { zoom, x, y } = parse(faceCropStyle(p, padding));
+    const z = zoom / 100;
+    const zx = z, zy = z / p.a;
+    const x0 = (-(1 - zx) * (x / 100)) / zx;
+    const y0 = (-(1 - zy) * (y / 100)) / zy;
+    return { x0, x1: x0 + 1 / zx, y0, y1: y0 + 1 / zy };
+  }
+
+  it("fits a tall detector box on a portrait image", () => {
+    // The real shape: boxes run about 1:1.85 tall and images are often
+    // portrait. Sizing the zoom from the face's width alone made the
+    // visible band shorter than the face and sliced the head off.
+    const p: PhotoRef = { f: "x.jpg", b: [0.42, 0.18, 0.58, 0.48], a: 0.75, c: "", l: "" };
+    const win = window_(p);
+    expect(win.y0).toBeLessThanOrEqual(0.18);
+    expect(win.y1).toBeGreaterThanOrEqual(0.48);
+  });
+
+  it("fits the face across a range of real-world shapes", () => {
+    const shapes: PhotoRef[] = [
+      { f: "a.jpg", b: [0.40, 0.10, 0.52, 0.32], a: 0.667, c: "", l: "" }, // tall portrait
+      { f: "b.jpg", b: [0.10, 0.30, 0.18, 0.48], a: 1.5, c: "", l: "" },   // wide, face left
+      { f: "c.jpg", b: [0.80, 0.60, 0.92, 0.86], a: 1.0, c: "", l: "" },   // square, corner
+      { f: "d.jpg", b: [0.05, 0.02, 0.14, 0.20], a: 0.75, c: "", l: "" },  // top-left corner
+      { f: "e.jpg", b: [0.30, 0.30, 0.70, 0.75], a: 1.33, c: "", l: "" },  // large face
+    ];
+    for (const p of shapes) {
+      const win = window_(p);
+      const [bx1, by1, bx2, by2] = p.b;
+      expect(win.x0).toBeLessThanOrEqual(bx1 + 1e-6);
+      expect(win.x1).toBeGreaterThanOrEqual(bx2 - 1e-6);
+      expect(win.y0).toBeLessThanOrEqual(by1 + 1e-6);
+      expect(win.y1).toBeGreaterThanOrEqual(by2 - 1e-6);
+    }
+  });
+
+  it("never letterboxes the image inside its own frame", () => {
+    // The rendered image must cover the box on both axes, or the
+    // background colour shows through as a band.
+    for (const a of [0.5, 0.75, 1, 1.5, 2.5]) {
+      const p: PhotoRef = { f: "x.jpg", b: [0.2, 0.2, 0.8, 0.8], a, c: "", l: "" };
+      const { zoom } = parse(faceCropStyle(p));
+      expect(zoom / 100).toBeGreaterThanOrEqual(1);
+      expect(zoom / 100).toBeGreaterThanOrEqual(a - 1e-9);
+    }
   });
 });

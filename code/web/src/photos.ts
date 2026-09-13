@@ -5,7 +5,15 @@ import type { PhotoData, PhotoRef } from "./types";
  *  not work: the permitted widths are a per-image bucket list and anything
  *  else is refused. */
 export function photoUrl(photo: PhotoRef, width = 640): string {
-  const name = encodeURIComponent(photo.f.replace(/ /g, "_"));
+  // encodeURIComponent leaves ! ' ( ) * alone. An apostrophe is legal in a
+  // URL but not inside the CSS url('...') this ends up in -- it closed the
+  // string and the browser dropped the whole declaration, so every person
+  // with a quote in their filename rendered as an empty box. Percent-encode
+  // them too; Commons accepts the escaped form.
+  const name = encodeURIComponent(photo.f.replace(/ /g, "_")).replace(
+    /[!'()*]/g,
+    (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`
+  );
   return `https://commons.wikimedia.org/wiki/Special:FilePath/${name}?width=${width}`;
 }
 
@@ -32,9 +40,18 @@ export function faceCropStyle(photo: PhotoRef, padding = 0.55, displayPx = 160):
   const cx = x1 + w / 2;
   const cy = y1 + h / 2;
 
-  // Zoom so the padded face box fills the frame. Never below 1: shrinking
-  // would letterbox the image inside its own element.
-  const zoom = Math.max(1 / (w * (1 + padding)), 1);
+  // Zoom so the whole padded face fits, choosing whichever axis binds.
+  //
+  // Sizing from the width alone cut the tops off heads: detector boxes here
+  // run about 1:1.85 tall, and on a portrait image the visible band is
+  // shorter still, so a window 1.55x the face's *width* is far narrower
+  // than the face is tall. Each axis gives an upper bound on the zoom, and
+  // the smaller one wins; the floors keep the image covering its frame
+  // rather than letterboxing inside it.
+  const aspect = photo.a > 0 ? photo.a : 1;
+  const fitWidth = 1 / (w * (1 + padding));
+  const fitHeight = aspect / (h * (1 + padding));
+  const zoom = Math.max(Math.min(fitWidth, fitHeight), 1, aspect);
 
   // background-position aligns the P% point of the image with the P% point
   // of the box, so centring a point needs this rather than a raw offset.
@@ -47,8 +64,6 @@ export function faceCropStyle(photo: PhotoRef, padding = 0.55, displayPx = 160):
   // Width drives the scale. `background-size: Z% auto` renders the height
   // as Z/aspect of the box, so vertical magnification is the zoom divided
   // by the image's aspect ratio.
-  const aspect = photo.a > 0 ? photo.a : 1;
-
   // Ask Commons for an image large enough that the face still has pixels
   // after the zoom. A face filling 5% of the frame shown at 160px needs a
   // ~3000px source; requesting a flat 640px would render about thirty
