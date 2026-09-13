@@ -3,7 +3,7 @@ import { loadGraphData, buildGraphology } from "./graphData";
 import { getDisplayMode } from "./sigmaSetup";
 import { searchNames } from "./search";
 import { flyToNode, getSidebarData, formatSimilarity, escapeHtml } from "./interactions";
-import { DIM_NODE_COLOR, SELECTED_NODE_COLOR } from "./theme";
+import { DIM_NODE_COLOR, FADED_EDGE_COLOR, SELECTED_NODE_COLOR } from "./theme";
 import { fetchWikipediaInfo } from "./wikipediaPhoto";
 import type { GraphData, GraphNode } from "./types";
 
@@ -377,7 +377,13 @@ async function bootstrap() {
     if (renderer) renderer.kill();
     graph = buildGraphology(data, isDark);
     renderer = new Sigma(graph, container as HTMLElement, {
+      // Our nodes are deliberately small (1.5-4px), so Sigma's default
+      // size threshold would suppress every label. Zero lets them all
+      // qualify; the grid settings below then decide how many actually
+      // fit, rather than painting overlapping names on top of each other.
       labelRenderedSizeThreshold: 0,
+      labelGridCellSize: 250,
+      labelDensity: 0.6,
     });
 
     renderer.on("clickNode", ({ node }) => {
@@ -435,7 +441,10 @@ async function bootstrap() {
         const highlightKey = String(highlightId);
         const extremities = graph.extremities(edge);
         if (!extremities.includes(highlightKey)) {
-          display.hidden = true;
+          // Dimmed, not hidden. Hiding every non-incident edge blanked the
+          // entire map whenever anything was selected -- and since startup
+          // auto-selects someone, that was the first thing anyone saw.
+          display.color = FADED_EDGE_COLOR;
         }
       }
       return display;
