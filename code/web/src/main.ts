@@ -103,9 +103,16 @@ async function bootstrap() {
    *  photos.json arrives after the graph, so the first sidebar opened on a
    *  cold load has no crop to show yet -- hence the initials fallback
    *  rather than an empty box. */
-  function faceHtml(id: number, name: string, cls: string, width: number): string {
+  function faceHtml(
+    id: number, name: string, cls: string, width: number, fill = false
+  ): string {
     const photo = photosFor(id)?.[0];
-    const size = `width:${width}px;height:${width}px`;
+    // `fill` lets the container own the size. The sidebar photo is 160px on
+    // a desktop and 72px in the mobile bottom sheet, and a hardcoded inline
+    // width cannot be overridden by either -- it rendered a 160px crop
+    // inside a 72px frame, so all you saw was its top-left corner. `width`
+    // still decides how large a source to ask Commons for.
+    const size = fill ? "width:100%;height:100%" : `width:${width}px;height:${width}px`;
     if (!photo) {
       const initials = name.split(" ").map((w) => w[0]).join("").slice(0, 2);
       return `<span class="${cls} face-fallback" style="${size}"
@@ -162,7 +169,7 @@ async function bootstrap() {
     const photo = photosFor(info.id)?.[0];
     sidebarEl.hidden = false;
     sidebarEl.innerHTML = `
-      <div id="sidebar-photo">${faceHtml(info.id, info.name, "face", 160)}</div>
+      <div id="sidebar-photo">${faceHtml(info.id, info.name, "face", 160, true)}</div>
       <h2>${escapeHtml(info.name)}</h2>
       <p class="attr"></p>
       <p class="known-for" hidden></p>
