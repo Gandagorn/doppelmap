@@ -607,18 +607,16 @@ body {
     border-top: 1px solid var(--border);
     border-radius: var(--radius) var(--radius) 0 0;
   }
-  /* As a bottom sheet the vertical space is the scarce resource, and a
-     160px photo stacked above the name ate most of it -- the similar
-     list, which is the actual content, started below the fold. Lay the
-     photo and name out side by side instead. */
-  /* Qualified with #sidebar: the 160px default is declared further down the
-     file and would otherwise win on source order, which is what had been
-     happening -- the bottom sheet was still opening with a 160px photo. */
-  #sidebar #sidebar-photo {
+  /* Floated so the name sits beside the photo rather than under it. The
+     photo keeps its full 160px here deliberately -- shrinking it to buy
+     vertical space made it too small to read as a face. */
+  #sidebar-photo {
     float: left;
-    width: 72px;
-    height: 72px;
     margin-right: 12px;
+    /* Clearance eats a cleared element's own top margin, so the gap below
+       the photo has to come from the float itself or the heading underneath
+       lands flush against it. */
+    margin-bottom: 10px;
   }
   #sidebar h2 {
     margin-top: 0;
