@@ -50,10 +50,17 @@ MAX_IMAGES_PER_PERSON = 40
 MAX_FACES_PER_IMAGE = 4       # group shots: keep the largest few, not all
 MIN_DET_SCORE = 0.60          # detector confidence floor
 MIN_FACE_PX = 60              # faces smaller than this embed poorly
-DOWNLOAD_WORKERS = 16         # I/O bound, so well above core count
+DOWNLOAD_WORKERS = 16         # image fetches from upload.wikimedia.org
+# The *API* is rate limited far more tightly than the image servers, and
+# Wikimedia asks for serial requests against it. Sixteen threads hammering
+# search got the whole run 429ed, which silently produced empty results for
+# people like Bruce Willis and Dua Lipa. Keep this low.
+DISCOVERY_WORKERS = 3
+API_DELAY = 0.35              # seconds between API calls, per thread
 QUEUE_DEPTH = 64              # decoded images awaiting the GPU (RAM bound)
 REQUEST_TIMEOUT = 20          # seconds per HTTP request
-MAX_RETRIES = 3
+MAX_RETRIES = 3               # image downloads
+API_RETRIES = 6               # API calls, which hit 429s and need patience
 MAX_IMAGE_BYTES = 25_000_000  # skip absurd originals
 
 print("output ->", OUT_DIR)
@@ -149,22 +156,30 @@ def session():
 
 
 def api_get(url, params):
-    """GET with bounded retries and backoff.
+    """GET with exponential backoff. Returns None only after giving up.
 
-    Degrades to None rather than raising: no single failure should be able
-    to take down a run that spans hours.
+    None means "we do not know", never "there is nothing" -- the caller has
+    to keep those apart, because a rate-limited answer recorded as an empty
+    result would be cached permanently by the resume logic.
     """
-    for attempt in range(MAX_RETRIES):
+    for attempt in range(API_RETRIES):
         try:
+            time.sleep(API_DELAY)
             r = session().get(url, params=params, timeout=REQUEST_TIMEOUT)
-            if r.status_code == 429:          # rate limited
-                time.sleep(2 * (attempt + 1))
+            if r.status_code == 429:
+                # Honour Retry-After when given; otherwise back off hard.
+                wait = float(r.headers.get("Retry-After") or 0) or min(60, 5 * 2 ** attempt)
+                print(f"  rate limited, waiting {wait:.0f}s")
+                time.sleep(wait)
                 continue
             if r.ok:
                 return r.json()
+            if 500 <= r.status_code < 600:
+                time.sleep(min(60, 5 * 2 ** attempt))
+                continue
+            return None                        # 4xx other than 429: real error
         except requests.RequestException:
-            pass
-        time.sleep(1.5 * (attempt + 1))
+            time.sleep(min(30, 2 * 2 ** attempt))
     return None
 
 
@@ -188,7 +203,7 @@ def discover(name):
         },
     )
     if not data:
-        return []
+        return None            # unknown, not empty -- see api_get
 
     out = []
     for page in (data.get("query", {}).get("pages") or {}).values():
@@ -232,18 +247,32 @@ if os.path.exists(DISCOVERY_CACHE):
     print(f"{len(cache)} people already discovered (cached)")
 
 missing = [p for p in todo if p not in cache]
+failed = []
 if missing:
-    with ThreadPoolExecutor(max_workers=DOWNLOAD_WORKERS) as pool:
+    with ThreadPoolExecutor(max_workers=DISCOVERY_WORKERS) as pool:
         for person, found in zip(
             missing, tqdm(pool.map(discover, missing), total=len(missing), desc="discover")
         ):
-            cache[person] = found
+            # Only a real answer is cached. A failure stays uncached so the
+            # next run retries the person instead of inheriting a wrong
+            # "they have no images" verdict forever.
+            if found is None:
+                failed.append(person)
+            else:
+                cache[person] = found
     tmp = DISCOVERY_CACHE + ".tmp"
     with open(tmp, "w", encoding="utf-8") as fh:
         json.dump(cache, fh, ensure_ascii=False)
     os.replace(tmp, DISCOVERY_CACHE)
 
-candidates = {p: cache.get(p, []) for p in todo}
+if failed:
+    print(f"WARNING: discovery failed for {len(failed)} people "
+          f"(rate limiting?) -- they are skipped this run and retried next. "
+          f"e.g. {failed[:5]}")
+
+# Only people we actually have an answer for get processed, so nobody is
+# written out empty on the strength of a failed lookup.
+candidates = {p: cache[p] for p in todo if p in cache}
 print(f"{sum(len(v) for v in candidates.values())} candidate images "
       f"across {len(candidates)} people")
 
