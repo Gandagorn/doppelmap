@@ -97,15 +97,19 @@ def name_tokens(name):
     return [t for t in parts if len(t) > 2 and t not in skip]
 
 
-def title_mentions(name, title):
-    """Cheap prefilter: could this Commons title plausibly show this person?
+def names_the_person(name, title, url=""):
+    """Does this Commons title or URL name the person?
 
-    Deliberately permissive. It only has to be cheaper than downloading the
-    image -- the real identity decision happens afterwards from the face
-    embeddings themselves, because titles mislead in both directions.
-    Commons search returns other people photographed at the same event (a
-    "Colin Hanks" query returned five Michael Cera shots from one Flickr
-    set), while plenty of correctly-titled images are group photos.
+    Recorded against every image rather than used to discard any, because
+    this is the strongest identity signal available: Commons filenames are
+    descriptive and human-curated. Downstream the named images become the
+    anchor that decides *which* face in a gallery is this person, which
+    matters because galleries are rarely clean -- a "Colin Hanks" search
+    returned five Michael Cera photos from one Flickr set against two real
+    ones, and the face recurring most across the whole gallery is Cera's.
+
+    Unnamed images are still collected and still usable; they just do not
+    get a vote on who the person is.
 
     Matches on the longest token, usually the surname. Last-token breaks on
     regnal names (Charles III -> "iii"), and any-token would let a Tom
@@ -115,7 +119,7 @@ def title_mentions(name, title):
     if not tokens:
         return True
     key = max(tokens, key=len)
-    return key in strip_accents(title).lower()
+    return key in strip_accents(f"{title} {url}").replace("_", " ").lower()
 
 
 # ==== CELL 4 - discover candidate images ===================================
@@ -193,11 +197,12 @@ def discover(name):
             continue
         if (info.get("size") or 0) > MAX_IMAGE_BYTES:
             continue
-        if not title_mentions(name, title):
-            continue
         meta = info.get("extmetadata") or {}
         out.append({
             "title": title,
+            # Whether the filename names this person -- the anchor signal
+            # the prototype step uses to pick their face out of a gallery.
+            "names_person": names_the_person(name, title, info["url"]),
             "source_url": f"https://commons.wikimedia.org/wiki/{title.replace(' ', '_')}",
             "original_url": info["url"],
             "width": info.get("width"),

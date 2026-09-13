@@ -1,108 +1,132 @@
-"""Loads per-image embeddings collected from Wikimedia Commons.
+"""Loads per-image face embeddings collected from Wikimedia Commons.
 
-The Commons collector writes one JSON file per person, named after them,
-holding a list of image records -- each with its own 512-d L2-normalized
-embedding plus provenance (Commons URL, licence, creator). That is a
-different shape from the older IMDB-WIKI pipeline, which handed over a
-.npz already reduced to one prototype vector per person.
+The collector writes one JSON file per person, named after them, holding
+image records with 512-d L2-normalized face embeddings plus provenance
+(Commons URL, licence, creator). That is a different shape from the older
+IMDB-WIKI pipeline, which handed over a .npz already reduced to one
+prototype per person, so the reduction happens here instead.
 
-So the medoid/consensus reduction that used to happen in the notebook
-happens here instead. Everything downstream is unchanged: this emits the
-same (embeddings_by_name, count_by_name) pair that real_embeddings.py
-does, which is the seam build_dataset.py consumes.
+Everything downstream is unchanged: this emits the same
+(embeddings_by_name, count_by_name) pair that real_embeddings.py does,
+which is the seam build_dataset.py consumes.
 """
 import json
 from pathlib import Path
 
 import numpy as np
 
-# Cosine similarity above which two photos are taken to be the same
-# person. 0.35 is ArcFace's conventional same-identity floor.
+# Cosine similarity above which two faces are taken to be the same person.
+# 0.35 is ArcFace's conventional same-identity floor.
 SAME_PERSON = 0.35
-# A gallery where fewer than this share of photos agree with the medoid is
-# too contaminated to trust, so the person is dropped entirely.
-MIN_CONSENSUS = 0.5
-# Fewer than this many usable photos and the prototype is too thin.
-MIN_IMAGES = 3
+# Below this many usable faces there is nothing to average; this is the
+# only reason a person is dropped.
+MIN_FACES = 2
 
 
 def _identifying_token(name: str) -> str:
     """The most distinctive word in a name, lowercased.
 
-    Used to check an image actually depicts the person. The longest token
-    beats "the last one" for regnal names (Charles III -> "charles", not
-    "iii") and beats "any token" for first names shared across the
-    dataset (Tom Cruise -> "cruise", so a Tom Holland photo can't match).
+    The longest token beats "the last one" for regnal names (Charles III ->
+    "charles", not "iii") and beats "any token" for shared first names
+    (Tom Cruise -> "cruise", so a Tom Holland photo can't match).
     """
-    tokens = [t.strip(".,") for t in name.split()]
+    tokens = [t.strip(".,'\"") for t in name.split()]
     return max(tokens, key=len).lower() if tokens else name.lower()
 
 
+def names_the_person(name: str, record: dict) -> bool:
+    """Does this image's title or URL name the person?
+
+    Commons filenames are descriptive and human-curated, so a title or URL
+    carrying the person's name is strong evidence the person is in the
+    frame -- far stronger than anything recoverable from the pixels alone
+    when a gallery is mixed.
+    """
+    token = _identifying_token(name)
+    haystack = f"{record.get('title', '')} {record.get('original_url', '')}"
+    return token in haystack.replace("_", " ").lower()
+
+
+def _faces_of(record: dict) -> list[list[float]]:
+    """Every face embedding in one image record.
+
+    Handles both collector schemas: the newer one stores `faces: [{bbox,
+    emb}, ...]` so a group photo contributes each face separately, while
+    the older one stored a single `emb` per image.
+    """
+    faces = record.get("faces")
+    if isinstance(faces, list):
+        return [f["emb"] for f in faces if f.get("emb")]
+    return [record["emb"]] if record.get("emb") else []
+
+
 def load_commons_people(directory: Path) -> dict[str, list[dict]]:
-    """Reads every *.json in `directory`; the filename is the person."""
+    """Reads every *.json in `directory`; the filename is the person.
+
+    Accepts either a bare list of image records or a {"name", "images"}
+    object, which is what the newer collector writes.
+    """
     people = {}
     for path in sorted(Path(directory).glob("*.json")):
-        records = json.loads(path.read_text(encoding="utf-8"))
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        records = payload.get("images", []) if isinstance(payload, dict) else payload
         if records:
             people[path.stem] = records
     return people
 
 
-def records_depicting(name: str, records: list[dict]) -> list[dict]:
-    """Drops images whose Commons title doesn't mention the person.
-
-    Commons search matches on photoset and event metadata, not just
-    subjects, so a query returns other people photographed at the same
-    event -- for "Colin Hanks" it returned five Michael Cera shots from
-    one Flickr set against only two real Colin Hanks photos. The medoid
-    then locks onto the majority face and confidently mislabels it. The
-    collector filters on this now too, but caches predate that fix, so
-    this stays here as a guard rather than an assumption.
-    """
-    token = _identifying_token(name)
-    return [r for r in records if token in r.get("title", "").lower()]
-
-
-def person_prototype(records: list[dict]) -> tuple[np.ndarray, list[dict]] | None:
+def person_prototype(name: str, images: list[dict]) -> tuple[np.ndarray, int] | None:
     """Reduces one person's images to a single unit vector.
 
-    Picks the medoid (the photo most similar to all the others, i.e. the
-    most typical one), keeps everything that agrees with it, and averages
-    those. Returns None when the gallery is too thin or too contaminated.
-    Also returns the kept records, so callers can use their URLs and
-    licences.
+    Images whose title or URL names the person are the anchor: they decide
+    *which* face is this person, which matters because a gallery is rarely
+    clean. A Commons search for "Colin Hanks" returned five Michael Cera
+    photos from one Flickr set against two real ones, and picking the
+    face that recurs most across the whole gallery confidently produced
+    Cera. Anchoring on the named images produces Colin.
+
+    Within the anchors the medoid still does real work, because a
+    correctly-named photo is often a group shot ("Tom Hanks and Steven
+    Spielberg") -- the face that recurs across the anchors is the subject,
+    and the co-stars drop out.
+
+    Nothing is discarded for being an odd gallery: a person is only
+    returned as None when there are too few faces to average at all.
     """
-    embeddings = np.array([r["emb"] for r in records if r.get("emb")], dtype=np.float32)
-    usable = [r for r in records if r.get("emb")]
-    if len(embeddings) < MIN_IMAGES:
+    anchored = [im for im in images if names_the_person(name, im)]
+    # Falling back to the full gallery rather than giving up: a thin or
+    # oddly-titled set still beats losing the person entirely.
+    pool = anchored or images
+
+    faces = [emb for record in pool for emb in _faces_of(record)]
+    if len(faces) < MIN_FACES:
         return None
 
+    embeddings = np.array(faces, dtype=np.float32)
     similarity = embeddings @ embeddings.T
     medoid = int(similarity.sum(axis=1).argmax())
     keep = similarity[medoid] > SAME_PERSON
-    if keep.mean() < MIN_CONSENSUS:
-        return None
+    if not keep.any():
+        keep[medoid] = True
 
     prototype = embeddings[keep].mean(axis=0)
     prototype /= np.linalg.norm(prototype)
-    return prototype, [r for r, k in zip(usable, keep) if k]
+    return prototype, int(keep.sum())
 
 
 def load_commons_embeddings(
     directory: Path,
 ) -> tuple[dict[str, np.ndarray], dict[str, int]]:
-    """Directory of per-person JSON -> (prototype by name, image count by name).
+    """Directory of per-person JSON -> (prototype by name, face count by name).
 
     Same return shape as real_embeddings.load_real_embeddings plus
-    load_popularity, so build_dataset can use either source.
+    load_popularity, so build_dataset can take either source.
     """
     prototypes: dict[str, np.ndarray] = {}
     counts: dict[str, int] = {}
-    for name, records in load_commons_people(directory).items():
-        result = person_prototype(records_depicting(name, records))
+    for name, images in load_commons_people(directory).items():
+        result = person_prototype(name, images)
         if result is None:
             continue
-        prototype, kept = result
-        prototypes[name] = prototype
-        counts[name] = len(kept)
+        prototypes[name], counts[name] = result
     return prototypes, counts
