@@ -11,6 +11,7 @@ Everything downstream is unchanged: this emits the same
 which is the seam build_dataset.py consumes.
 """
 import json
+import re
 from pathlib import Path
 from typing import NamedTuple
 
@@ -30,9 +31,26 @@ def _identifying_token(name: str) -> str:
     The longest token beats "the last one" for regnal names (Charles III ->
     "charles", not "iii") and beats "any token" for shared first names
     (Tom Cruise -> "cruise", so a Tom Holland photo can't match).
+
+    Two things have to go first, because the longest token picks them up and
+    then matches nothing at all -- which reads downstream as "no photo names
+    this person" and hands the gallery over to whoever else is in it:
+
+    A parenthesised qualifier is the longest token in "Chris Evans (actor)"
+    and "Drake (musician)", and no Commons filename carries it.
+
+    An apostrophe reaches us as an underscore in some names ("Conan
+    O_Brien"), so the name is normalised the same way the haystack is.
+    Splitting on the separator rather than keeping "o_brien" whole leaves
+    "brien", which matches both O'Brien and OBrien spellings.
     """
-    tokens = [t.strip(".,'\"") for t in name.split()]
-    return max(tokens, key=len).lower() if tokens else name.lower()
+    name = re.sub(r"\([^)]*\)", " ", name)
+    tokens = [t.strip(".,'\"") for t in re.split(r"[\s_']+", name) if t.strip(".,'\"")]
+    # Ties go to the later token, because surnames come last: "Mary, Queen
+    # of Scots" resolves to "scots" rather than "queen", which would have
+    # matched every royal portrait on Commons.
+    best = max(range(len(tokens)), key=lambda i: (len(tokens[i]), i)) if tokens else None
+    return tokens[best].lower() if tokens else name.strip().lower()
 
 
 def names_the_person(name: str, record: dict) -> bool:

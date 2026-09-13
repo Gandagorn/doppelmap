@@ -224,6 +224,13 @@ def _photo_ref(face) -> dict:
     }
 
 
+# Above this, two "people" are one gallery under two names rather than two
+# faces that happen to look alike. The strongest genuine pair measured is
+# 0.60 (Marie Antoinette and Mary, Queen of Scots, both from painted
+# portraits); real duplicates sit at 0.78 and above.
+DUPLICATE_IDENTITY = 0.70
+
+
 def build_dataset_from_commons(
     directory: Path, *, k: int, seed: int, out_dir: Path, similar_k: int = 15,
     photos_per_person: int = 6,
@@ -267,6 +274,28 @@ def build_dataset_from_commons(
         return out / np.maximum(np.linalg.norm(out, axis=-1, keepdims=True), 1e-9)
 
     embeddings = centred(np.stack([prototypes[n] for n in names]))
+
+    # Drop identities that are really the same gallery twice.
+    #
+    # Commons hands the same person back under two spellings ("Catherine
+    # O'Hara" and "Catherine O_Hara" are byte-for-byte the same 13 photos),
+    # and a search occasionally returns somebody else entirely -- every one
+    # of "Debbie Rowe"'s photos is Elon Musk. Both surface as a pair scoring
+    # far above anything two different faces reach, so one threshold catches
+    # them. The loser is the thinner gallery; the threshold is set well above
+    # the strongest genuine pair so that lookalikes and relatives survive.
+    duplicate = np.triu(embeddings @ embeddings.T, 1) > DUPLICATE_IDENTITY
+    drop = set()
+    for a, b in zip(*np.nonzero(duplicate)):
+        loser = a if len(accepted[names[a]]) < len(accepted[names[b]]) else b
+        drop.add(int(loser))
+    if drop:
+        keep = [i for i in range(len(names)) if i not in drop]
+        print(f"dropping {len(drop)} duplicate identities: "
+              + ", ".join(sorted(names[i] for i in drop)))
+        names = [names[i] for i in keep]
+        embeddings = embeddings[keep]
+
     neighbor_idx, sim = build_knn(embeddings, k=max(k, similar_k))
     edges = mutual_knn_edges(neighbor_idx[:, :k], sim[:, :k])
     similar = directed_similar_lists(neighbor_idx[:, :similar_k], sim[:, :similar_k])
