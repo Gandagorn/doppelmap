@@ -38,6 +38,7 @@ drive.mount("/content/drive")
 WORK = "/content/drive/MyDrive/Projects/doppelmap"
 PEOPLE_FILE = f"{WORK}/people_top5000.json"   # <-- your pageview-ranked list
 OUT_DIR = f"{WORK}/faces"                     # one JSON per person lands here
+DISCOVERY_CACHE = f"{WORK}/discovery_cache.json"
 os.makedirs(OUT_DIR, exist_ok=True)
 
 # Wikimedia blocks generic user agents. A descriptive one with contact info is
@@ -219,13 +220,30 @@ def discover(name):
 todo = [p for p in PEOPLE if not os.path.exists(f"{OUT_DIR}/{p}.json")]
 print(f"{len(PEOPLE) - len(todo)} already collected, {len(todo)} to go")
 
-candidates = {}
-with ThreadPoolExecutor(max_workers=DOWNLOAD_WORKERS) as pool:
-    for person, found in zip(
-        todo, tqdm(pool.map(discover, todo), total=len(todo), desc="discover")
-    ):
-        candidates[person] = found
+# Cached separately from the per-person outputs: discovery is a full pass
+# over the Commons API for everyone, and it would otherwise be repeated in
+# full on every re-run -- including ones that only died partway through
+# downloading. Keeping it also means a settings change that only affects
+# the download/embed stage costs no API traffic at all.
+cache = {}
+if os.path.exists(DISCOVERY_CACHE):
+    with open(DISCOVERY_CACHE, encoding="utf-8") as fh:
+        cache = json.load(fh)
+    print(f"{len(cache)} people already discovered (cached)")
 
+missing = [p for p in todo if p not in cache]
+if missing:
+    with ThreadPoolExecutor(max_workers=DOWNLOAD_WORKERS) as pool:
+        for person, found in zip(
+            missing, tqdm(pool.map(discover, missing), total=len(missing), desc="discover")
+        ):
+            cache[person] = found
+    tmp = DISCOVERY_CACHE + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump(cache, fh, ensure_ascii=False)
+    os.replace(tmp, DISCOVERY_CACHE)
+
+candidates = {p: cache.get(p, []) for p in todo}
 print(f"{sum(len(v) for v in candidates.values())} candidate images "
       f"across {len(candidates)} people")
 
