@@ -510,8 +510,53 @@ body {
   #pair-card {
     padding: 24px 18px;
   }
+  /* Score and label move underneath both portraits.
+     Between them, the middle column has to carry a percentage and a label
+     that wraps to two lines at this width, which made it taller than the
+     faces and -- with the row centred -- left the two portraits sitting at
+     visibly different heights. Below, it is one line under a tidy pair.
+     The DOM order is face, score, face, so the placement is explicit. */
   #pair-body {
-    gap: 10px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px 12px;
+    /* The flex layout's align-items: center carries over and would centre
+       each column instead of stretching it to the row height, which is what
+       lets the buttons line up. */
+    align-items: stretch;
+  }
+  #pair-body .pair-side:first-child {
+    grid-area: 1 / 1;
+  }
+  #pair-body .pair-side:last-child {
+    grid-area: 1 / 2;
+  }
+  #pair-body .pair-score {
+    grid-area: 2 / 1 / auto / -1;
+    flex-direction: row;
+    align-items: baseline;
+    justify-content: center;
+    gap: 8px;
+  }
+  /* No longer sharing the row with the score, so they can be larger. */
+  #pair-body .pair-face,
+  #pair-body .pair-fallback {
+    width: 38vw;
+    height: 38vw;
+  }
+  #pair-body figcaption,
+  #pair-body .pair-credit {
+    max-width: 38vw;
+  }
+  #pair-body .pair-band {
+    margin-top: 0;
+    max-width: none;
+  }
+  /* Credits wrap to different numbers of lines, which left the two "View on
+     map" buttons at different heights. The grid row gives both sides the same
+     height; this pins the button to the bottom of each. */
+  #pair-body .pair-goto {
+    margin-top: auto;
   }
   /* Sized in vw and kept square. These rules used to target .pair-side img,
      which stopped existing when the faces became background-cropped spans:
@@ -521,8 +566,6 @@ body {
      file and would otherwise win on source order. */
   #pair-body .pair-face,
   #pair-body .pair-fallback {
-    width: 28vw;
-    height: 28vw;
     flex: none;
   }
   #pair-body .pair-fallback {
@@ -530,11 +573,9 @@ body {
   }
   #pair-body figcaption {
     font-size: 12px;
-    max-width: 28vw;
   }
   #pair-body .pair-credit {
     font-size: 10px;
-    max-width: 28vw;
   }
   .pair-score strong {
     font-size: 20px;
