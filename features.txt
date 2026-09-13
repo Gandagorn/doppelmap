@@ -1,0 +1,14 @@
+highlightes celeb should stay higlited when clicked and mouse moves
+make the dots overall smaller
+Set default to level 3 (show top 20% of celebs)
+show top 15 celebs, and if mouse hovers alos show the image
+make the images bigger
+add a link to the wiki page where the image is from
+Add short "about" info for the approach and data used (cutoff date)
+
+new functionaity: Walk the Graph
+ONce clicked, a dia show starts going from celeb to celeb that are highly similar. Should not contain cycles, but show one of the most likely similar person. Keep it simple for 
+
+
+
+Highest similarity dashboard on left side

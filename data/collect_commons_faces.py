@@ -608,37 +608,38 @@ if counts:
 # the original image's dimensions while measuring face boxes on a thumbnail.
 # CELL 5 now records the detection size directly, so this is not needed again.
 #
-# Metadata only: no images are downloaded and nothing is re-embedded. Safe to
-# re-run and safe to interrupt -- anyone already carrying det_width is skipped.
+# No network, no images, no re-embedding -- Commons answers CELL 5's
+# ?width=800 from a bucket list, and the rule is exact: it serves
+# min(960, original width) and anything narrower untouched. Checked against
+# 59 images from 349px to 4608px originals: 59 correct, 0 wrong.
+#
+# Do NOT be tempted to ask the API for this instead. iiurlwidth reports an
+# upscaled 800px thumbnail for a 444px original, and says 800 where Commons
+# really serves 960; an earlier version of this cell did that and got every
+# single image wrong.
+#
+# Safe to re-run and safe to interrupt: records already carrying det_width
+# were measured off the decoded image and are left alone.
 
 import glob, json, os
 
-COMMONS_API = "https://commons.wikimedia.org/w/api.php"
-BATCH = 50          # the API's limit for a titles= query
+THUMB_BUCKET = 960          # what Commons serves for CELL 5's ?width=800
 
 
-def thumb_sizes(titles):
-    """{title: (width, height)} for each title's THUMB_WIDTH thumbnail.
-
-    Commons serves ?width=800 from a per-image bucket list, so the answer is
-    960 or 727 or 509 rather than 800 -- which is exactly why the scale
-    cannot be reconstructed from the stored record and has to be asked for.
-    """
-    data = api_get(COMMONS_API, {
-        "action": "query", "format": "json", "prop": "imageinfo",
-        "iiprop": "url|size", "iiurlwidth": THUMB_WIDTH,
-        "titles": "|".join(titles),
-    })
-    sizes = {}
-    for page in (data or {}).get("query", {}).get("pages", {}).values():
-        info = (page.get("imageinfo") or [{}])[0]
-        # A file narrower than THUMB_WIDTH is served as-is and reports no
-        # thumb dimensions, so fall back to its own size.
-        width = info.get("thumbwidth") or info.get("width")
-        height = info.get("thumbheight") or info.get("height")
-        if width and height:
-            sizes[page["title"]] = (int(width), int(height))
-    return sizes
+def detected_size(rec):
+    """The pixel size this record's face boxes were measured in."""
+    width, height = rec.get("width"), rec.get("height")
+    if not width or not height:
+        return None
+    served_w = min(THUMB_BUCKET, width)
+    served_h = round(height * served_w / width)
+    # CELL 5's last retry falls back to the full-size original, so a box
+    # reaching past the thumbnail was measured on the original instead.
+    # Trust the boxes over the rule.
+    if any(f["bbox"][2] > served_w + 1 or f["bbox"][3] > served_h + 1
+           for f in rec.get("faces", [])):
+        return int(width), int(height)
+    return int(served_w), int(served_h)
 
 
 fixed = people = 0
@@ -646,31 +647,19 @@ for path in tqdm(sorted(glob.glob(f"{OUT_DIR}/*.json")), desc="repair"):
     with open(path, encoding="utf-8") as fh:
         payload = json.load(fh)
     images = payload["images"] if isinstance(payload, dict) else payload
-    todo = [r for r in images
-            if r.get("faces") and not r.get("det_width") and r.get("title")]
-    if not todo:
-        continue
-
-    sizes = {}
-    for i in range(0, len(todo), BATCH):
-        sizes.update(thumb_sizes([r["title"] for r in todo[i:i + BATCH]]))
-
-    for rec in todo:
-        size = sizes.get(rec["title"])
+    changed = False
+    for rec in images:
+        if not rec.get("faces") or rec.get("det_width"):
+            continue
+        size = detected_size(rec)
         if not size:
-            continue                       # unknown: leave it for a re-run
-        width, height = size
-        # CELL 5's last retry falls back to the full-size original, so a box
-        # reaching past the thumbnail was measured on the original instead.
-        # Trust the boxes rather than the assumption.
-        if (max(f["bbox"][2] for f in rec["faces"]) > width + 1
-                or max(f["bbox"][3] for f in rec["faces"]) > height + 1):
-            width = rec.get("width") or width
-            height = rec.get("height") or height
-        rec["det_width"], rec["det_height"] = int(width), int(height)
+            continue
+        rec["det_width"], rec["det_height"] = size
         fixed += 1
-
-    tmp = path + ".tmp"                    # same temp-then-rename as flush()
+        changed = True
+    if not changed:
+        continue
+    tmp = path + ".tmp"                      # same temp-then-rename as flush()
     with open(tmp, "w", encoding="utf-8") as fh:
         json.dump(payload, fh, ensure_ascii=False)
     os.replace(tmp, path)
