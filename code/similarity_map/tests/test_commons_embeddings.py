@@ -1,9 +1,12 @@
 import json
 
 import numpy as np
+import pytest
 
 from similarity_map.pipeline.commons_embeddings import (
+    PersonFace,
     _identifying_token,
+    best_matching_faces,
     load_commons_embeddings,
     names_the_person,
     person_prototype,
@@ -55,9 +58,9 @@ def test_prototype_anchors_on_the_named_images_not_the_majority_face():
     images = [_img(f"File:Colin Hanks {i}.jpg", v) for i, v in enumerate(_cluster(rng, colin, 2))]
     images += [_img(f"File:Michael Cera {i}.jpg", v) for i, v in enumerate(_cluster(rng, cera, 5))]
 
-    prototype, used = person_prototype("Colin Hanks", images)
+    prototype, accepted = person_prototype("Colin Hanks", images)
 
-    assert used == 2
+    assert len(accepted) == 2
     assert float(prototype @ colin) > 0.9
     assert float(prototype @ cera) < 0.5
 
@@ -71,9 +74,9 @@ def test_prototype_drops_co_stars_from_a_correctly_named_group_photo():
     solo = [_img(f"File:Tom Hanks {i}.jpg", v) for i, v in enumerate(_cluster(rng, tom, 4))]
     group = [_img("File:Tom Hanks and a co-star.jpg", _cluster(rng, tom, 1)[0], costar)]
 
-    prototype, used = person_prototype("Tom Hanks", solo + group)
+    prototype, accepted = person_prototype("Tom Hanks", solo + group)
 
-    assert used == 5  # four solo shots plus Tom's face from the group photo
+    assert len(accepted) == 5  # four solo shots plus Tom's face from the group
     assert float(prototype @ tom) > 0.9
     assert float(prototype @ costar) < 0.5
 
@@ -85,9 +88,9 @@ def test_prototype_keeps_a_person_whose_images_never_name_them():
     base = _unit(rng)[0]
     images = [_img(f"File:IMG_{i}.jpg", v) for i, v in enumerate(_cluster(rng, base, 4))]
 
-    prototype, used = person_prototype("Someone Unnamed", images)
+    prototype, accepted = person_prototype("Someone Unnamed", images)
 
-    assert used == 4
+    assert len(accepted) == 4
     assert float(prototype @ base) > 0.9
 
 
@@ -100,8 +103,8 @@ def test_prototype_keeps_a_person_whose_gallery_does_not_agree():
     result = person_prototype("Jane Doe", images)
 
     assert result is not None
-    prototype, used = result
-    assert used >= 1
+    prototype, accepted = result
+    assert len(accepted) >= 1
     assert np.isclose(np.linalg.norm(prototype), 1.0, atol=1e-5)
 
 
@@ -120,9 +123,9 @@ def test_reads_the_older_single_embedding_schema():
         for i, v in enumerate(_cluster(rng, base, 3))
     ]
 
-    prototype, used = person_prototype("Old Schema", images)
+    prototype, accepted = person_prototype("Old Schema", images)
 
-    assert used == 3
+    assert len(accepted) == 3
     assert float(prototype @ base) > 0.9
 
 
@@ -151,3 +154,105 @@ def test_load_commons_embeddings_end_to_end(tmp_path):
     assert set(prototypes) == {"Alice Smith", "Bob Jones"}
     assert counts == {"Alice Smith": 5, "Bob Jones": 3}
     assert np.isclose(np.linalg.norm(prototypes["Alice Smith"]), 1.0, atol=1e-5)
+
+
+def test_accepted_faces_carry_their_source_image():
+    # The comparison view needs the image behind each face -- its title,
+    # URL and licence -- not just the vector.
+    rng = np.random.default_rng(10)
+    base = _unit(rng)[0]
+    images = [_img(f"File:Jane Roe {i}.jpg", v, url=f"http://x/{i}.jpg")
+              for i, v in enumerate(_cluster(rng, base, 3))]
+
+    _, accepted = person_prototype("Jane Roe", images)
+
+    assert {f.record["title"] for f in accepted} == {f"File:Jane Roe {i}.jpg" for i in range(3)}
+    assert all(f.index == 0 for f in accepted)
+
+
+def test_best_matching_faces_picks_the_closest_photo_pair():
+    rng = np.random.default_rng(11)
+    # Jitter stays small: at 512 dimensions even 0.1 of noise per component
+    # dwarfs the shared direction, and the two people stop resembling each
+    # other at all.
+    look = _unit(rng)[0]                       # the resemblance they share
+    a_faces = _cluster(rng, look, 3, jitter=0.05)
+    b_faces = _cluster(rng, look, 3, jitter=0.05)
+    a = [_img(f"File:A {i}.jpg", v) for i, v in enumerate(a_faces)]
+    b = [_img(f"File:B {i}.jpg", v) for i, v in enumerate(b_faces)]
+    _, fa = person_prototype("A", a)
+    _, fb = person_prototype("B", b)
+
+    score, best_a, best_b = best_matching_faces(fa, fb)
+
+    every = [(float(x.embedding @ y.embedding), x, y) for x in fa for y in fb]
+    assert score == pytest.approx(max(s for s, _, _ in every))
+    assert best_a.record["title"].startswith("File:A")
+    assert best_b.record["title"].startswith("File:B")
+
+
+def test_best_matching_faces_ignores_a_photo_the_two_people_share():
+    # The real failure: "Elizabeth, Philip, Charles and Anne.jpg" names two
+    # of our people, so the same crop lands in both galleries and matches
+    # itself at 1.000. A shared image can never be evidence of resemblance.
+    rng = np.random.default_rng(12)
+    shared_face, solo_a, solo_b = _unit(rng, 3)
+    group = _img("File:Two Royals Together.jpg", shared_face)
+    a = [group, _img("File:A solo 1.jpg", solo_a), _img("File:A solo 2.jpg", solo_a)]
+    b = [group, _img("File:B solo 1.jpg", solo_b), _img("File:B solo 2.jpg", solo_b)]
+
+    fa = [PersonFace(np.asarray(f["emb"], np.float32), im, 0) for im in a for f in im["faces"]]
+    fb = [PersonFace(np.asarray(f["emb"], np.float32), im, 0) for im in b for f in im["faces"]]
+    score, best_a, best_b = best_matching_faces(fa, fb)
+
+    assert score < 0.99                        # not a face against itself
+    assert best_a.record["title"] != best_b.record["title"]
+
+
+def test_best_matching_faces_handles_empty_input():
+    assert best_matching_faces([], []) is None
+
+
+def test_best_matching_faces_returns_none_when_the_only_photo_is_shared():
+    # Two people whose sole image is one group photo: every possible
+    # pairing comes from that photo, so there is no honest comparison to
+    # show and the view gets nothing rather than a face against itself.
+    rng = np.random.default_rng(13)
+    a_face, b_face = _unit(rng, 2)
+    shared = _img("File:Both Of Them.jpg", a_face, b_face)
+    fa = [PersonFace(np.asarray(shared["faces"][0]["emb"], np.float32), shared, 0)]
+    fb = [PersonFace(np.asarray(shared["faces"][1]["emb"], np.float32), shared, 1)]
+
+    assert best_matching_faces(fa, fb) is None
+
+
+def test_best_matching_faces_allows_cross_pairing_between_two_group_photos():
+    # Only pairings *within* one image are masked. If the same two people
+    # appear in two different group photos, comparing one person in the
+    # first against the other in the second is a real comparison of two
+    # distinct photographs, and should be offered.
+    rng = np.random.default_rng(15)
+    a_face, b_face = _unit(rng, 2)
+    one = _img("File:Together One.jpg", a_face, b_face)
+    two = _img("File:Together Two.jpg", a_face, b_face)
+    fa = [PersonFace(np.asarray(im["faces"][0]["emb"], np.float32), im, 0) for im in (one, two)]
+    fb = [PersonFace(np.asarray(im["faces"][1]["emb"], np.float32), im, 1) for im in (one, two)]
+
+    result = best_matching_faces(fa, fb)
+
+    assert result is not None
+    _, best_a, best_b = result
+    assert best_a.record["title"] != best_b.record["title"]
+
+
+def test_best_matching_faces_keeps_a_genuinely_negative_match():
+    # A real pairing that happens to score below zero is still a real
+    # pairing, and must not be confused with a masked one.
+    rng = np.random.default_rng(14)
+    v = _unit(rng)[0]
+    fa = [PersonFace(v, _img("File:A.jpg", v), 0)]
+    fb = [PersonFace(-v, _img("File:B.jpg", -v), 0)]
+
+    score, _, _ = best_matching_faces(fa, fb)
+
+    assert score == pytest.approx(-1.0, abs=1e-4)
