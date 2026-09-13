@@ -372,6 +372,7 @@ import queue
 import cv2
 import numpy as np
 from insightface.app import FaceAnalysis
+from insightface.utils import face_align
 
 app = FaceAnalysis(
     name="buffalo_l",
@@ -379,6 +380,24 @@ app = FaceAnalysis(
     providers=["CUDAExecutionProvider"],
 )
 app.prepare(ctx_id=0, det_size=(640, 640))
+recognizer = app.models["recognition"]
+
+
+def embed_with_flip(img, face):
+    """Embedding averaged over the face and its mirror image.
+
+    Test-time flip augmentation. ArcFace is sensitive to which way a head
+    is turned and to light falling on one side, and averaging a face with
+    its mirror cancels part of that, giving a slightly steadier vector for
+    the same person across photos.
+
+    Costs one extra forward pass on a 112x112 crop, which is nothing next
+    to detection -- both views go through as a single batch.
+    """
+    aligned = face_align.norm_crop(img, landmark=face.kps, image_size=112)
+    feats = np.asarray(recognizer.get_feat([aligned, cv2.flip(aligned, 1)]))
+    summed = feats.reshape(2, -1).sum(axis=0)
+    return summed / np.linalg.norm(summed)
 
 
 def fetch(job):
@@ -411,6 +430,8 @@ def faces_in(img):
         x1, y1, x2, y2 = (float(v) for v in f.bbox)
         if min(x2 - x1, y2 - y1) < MIN_FACE_PX:
             continue
+        if f.kps is None:          # no landmarks, so no reliable alignment
+            continue
         found.append({
             "bbox": [round(v, 1) for v in (x1, y1, x2, y2)],
             "det_score": round(float(f.det_score), 3),
@@ -419,7 +440,7 @@ def faces_in(img):
             # could reorder a ranking, while cutting each stored vector from
             # ~13.7 KB to ~3.5 KB. Across 5,000 people that is the difference
             # between roughly 2 GB and 500 MB on Drive.
-            "emb": [round(v, 4) for v in f.normed_embedding.astype(float).tolist()],
+            "emb": [round(v, 4) for v in embed_with_flip(img, f).astype(float).tolist()],
         })
     found.sort(key=lambda d: -(d["bbox"][2] - d["bbox"][0]) * (d["bbox"][3] - d["bbox"][1]))
     return found[:MAX_FACES_PER_IMAGE]
