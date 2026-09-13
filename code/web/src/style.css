@@ -611,7 +611,10 @@ body {
      160px photo stacked above the name ate most of it -- the similar
      list, which is the actual content, started below the fold. Lay the
      photo and name out side by side instead. */
-  #sidebar-photo {
+  /* Qualified with #sidebar: the 160px default is declared further down the
+     file and would otherwise win on source order, which is what had been
+     happening -- the bottom sheet was still opening with a 160px photo. */
+  #sidebar #sidebar-photo {
     float: left;
     width: 72px;
     height: 72px;
@@ -725,7 +728,12 @@ body {
 /* Group headings in the similar list. Quiet by design: they are there to
    tell you how much weight to give the rows under them, not to compete
    with the names. */
+/* Clears the floated photo in the mobile bottom sheet. .similar-list already
+   did; this heading was added later and sat beside the photo instead, which
+   is exactly the first line of the list appearing next to it while every row
+   underneath lined up correctly. */
 .resemblance-band {
+  clear: both;
   margin: 16px 0 6px;
   font-size: 11px;
   font-weight: 600;
