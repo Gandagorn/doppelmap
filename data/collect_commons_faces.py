@@ -601,3 +601,79 @@ if counts:
     print(f"faces per person: min={ordered[0]} "
           f"median={ordered[len(ordered) // 2]} max={ordered[-1]}")
     print(f"{sum(counts)} faces total")
+
+
+# ==== CELL 7 - one-off repair for data collected before det_width ==========
+# Only needed for people collected by an OLDER version of CELL 5, which stored
+# the original image's dimensions while measuring face boxes on a thumbnail.
+# CELL 5 now records the detection size directly, so this is not needed again.
+#
+# Metadata only: no images are downloaded and nothing is re-embedded. Safe to
+# re-run and safe to interrupt -- anyone already carrying det_width is skipped.
+
+import glob, json, os
+
+COMMONS_API = "https://commons.wikimedia.org/w/api.php"
+BATCH = 50          # the API's limit for a titles= query
+
+
+def thumb_sizes(titles):
+    """{title: (width, height)} for each title's THUMB_WIDTH thumbnail.
+
+    Commons serves ?width=800 from a per-image bucket list, so the answer is
+    960 or 727 or 509 rather than 800 -- which is exactly why the scale
+    cannot be reconstructed from the stored record and has to be asked for.
+    """
+    data = api_get(COMMONS_API, {
+        "action": "query", "format": "json", "prop": "imageinfo",
+        "iiprop": "url|size", "iiurlwidth": THUMB_WIDTH,
+        "titles": "|".join(titles),
+    })
+    sizes = {}
+    for page in (data or {}).get("query", {}).get("pages", {}).values():
+        info = (page.get("imageinfo") or [{}])[0]
+        # A file narrower than THUMB_WIDTH is served as-is and reports no
+        # thumb dimensions, so fall back to its own size.
+        width = info.get("thumbwidth") or info.get("width")
+        height = info.get("thumbheight") or info.get("height")
+        if width and height:
+            sizes[page["title"]] = (int(width), int(height))
+    return sizes
+
+
+fixed = people = 0
+for path in tqdm(sorted(glob.glob(f"{OUT_DIR}/*.json")), desc="repair"):
+    with open(path, encoding="utf-8") as fh:
+        payload = json.load(fh)
+    images = payload["images"] if isinstance(payload, dict) else payload
+    todo = [r for r in images
+            if r.get("faces") and not r.get("det_width") and r.get("title")]
+    if not todo:
+        continue
+
+    sizes = {}
+    for i in range(0, len(todo), BATCH):
+        sizes.update(thumb_sizes([r["title"] for r in todo[i:i + BATCH]]))
+
+    for rec in todo:
+        size = sizes.get(rec["title"])
+        if not size:
+            continue                       # unknown: leave it for a re-run
+        width, height = size
+        # CELL 5's last retry falls back to the full-size original, so a box
+        # reaching past the thumbnail was measured on the original instead.
+        # Trust the boxes rather than the assumption.
+        if (max(f["bbox"][2] for f in rec["faces"]) > width + 1
+                or max(f["bbox"][3] for f in rec["faces"]) > height + 1):
+            width = rec.get("width") or width
+            height = rec.get("height") or height
+        rec["det_width"], rec["det_height"] = int(width), int(height)
+        fixed += 1
+
+    tmp = path + ".tmp"                    # same temp-then-rename as flush()
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump(payload, fh, ensure_ascii=False)
+    os.replace(tmp, path)
+    people += 1
+
+print(f"repaired {fixed} images across {people} people")
