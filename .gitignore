@@ -10,3 +10,6 @@ __pycache__/
 # only the aggregated data/prototypes.npz is meant to be committed.
 data/emb_store.npz
 data/emb_cache.npz
+
+# Staging area for downloads pulled from the Commons collector run.
+data/incoming/
