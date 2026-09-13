@@ -446,7 +446,10 @@ body {
 }
 #pair-body {
   display: flex;
-  align-items: center;
+  /* Stretch, not center: the two sides carry credits of different lengths,
+     and centring each one independently left the portraits at different
+     heights. */
+  align-items: stretch;
   gap: 22px;
 }
 .pair-side {
@@ -491,7 +494,12 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   gap: 2px;
+}
+/* Pinned to the bottom of a now-equal-height side. */
+.pair-side .pair-goto {
+  margin-top: auto;
 }
 .pair-score strong {
   font-size: 30px;
@@ -506,7 +514,12 @@ body {
   letter-spacing: 0.06em;
   color: var(--text-muted);
 }
-@media (max-width: 640px) {
+/* Tablets and landscape phones need the stacked comparison too. The
+   breakpoint was 640px, which left every iPad and every phone turned
+   sideways on the side-by-side layout. 1000px covers a Pro Max in
+   landscape (932) and an iPad Pro in portrait (1024 is over, but its card
+   is wide enough for the label to sit on one line beside the faces). */
+@media (max-width: 1000px) {
   #pair-card {
     padding: 24px 18px;
   }
@@ -541,12 +554,12 @@ body {
   /* No longer sharing the row with the score, so they can be larger. */
   #pair-body .pair-face,
   #pair-body .pair-fallback {
-    width: 38vw;
-    height: 38vw;
+    width: min(38vw, 220px);
+    height: min(38vw, 220px);
   }
   #pair-body figcaption,
   #pair-body .pair-credit {
-    max-width: 38vw;
+    max-width: min(38vw, 220px);
   }
   #pair-body .pair-band {
     margin-top: 0;
