@@ -59,7 +59,7 @@ DISCOVERY_WORKERS = 3
 API_DELAY = 0.35              # seconds between API calls, per thread
 QUEUE_DEPTH = 64              # decoded images awaiting the GPU (RAM bound)
 REQUEST_TIMEOUT = 20          # seconds per HTTP request
-MAX_RETRIES = 3               # image downloads
+MAX_RETRIES = 5               # image downloads, incl. 429 backoff
 API_RETRIES = 6               # API calls, which hit 429s and need patience
 MAX_IMAGE_BYTES = 25_000_000  # skip absurd originals
 
@@ -410,17 +410,30 @@ def embed_with_flip(img, face):
 
 
 def fetch(job):
-    """Download and decode one image. Runs on a download thread."""
+    """Download and decode one image. Runs on a download thread.
+
+    Handles 429 properly. The first version treated a rate-limited reply as
+    an ordinary failure and gave up after three one-second retries, so under
+    throttling most images were quietly dropped and people ended up with a
+    fraction of their photos -- or none at all, which then looked exactly
+    like "this person has no usable pictures".
+    """
     person, rec = job
     for attempt in range(MAX_RETRIES):
         try:
             r = session().get(rec["original_url"], timeout=REQUEST_TIMEOUT)
+            if r.status_code == 429:
+                wait = float(r.headers.get("Retry-After") or 0) or min(60, 5 * 2 ** attempt)
+                time.sleep(wait)
+                continue
             if r.ok and r.content:
                 img = cv2.imdecode(np.frombuffer(r.content, np.uint8), cv2.IMREAD_COLOR)
                 return person, rec, img
+            if r.status_code < 500:
+                return person, rec, None      # 404 etc: retrying will not help
         except requests.RequestException:
             pass
-        time.sleep(1.0 * (attempt + 1))
+        time.sleep(min(30, 2 * 2 ** attempt))
     return person, rec, None
 
 
@@ -459,6 +472,9 @@ jobs = [(p, rec) for p, recs in candidates.items() for rec in recs]
 results = {p: [] for p in candidates}
 pending = {p: len(recs) for p, recs in candidates.items()}
 stats = {"ok": 0, "no_face": 0, "failed": 0, "faces": 0}
+# `failed` counts downloads that never produced an image. A large value
+# means throttling or dead URLs, not people without photos -- worth knowing
+# before a thin dataset is mistaken for a thin subject.
 
 
 def flush(person):
