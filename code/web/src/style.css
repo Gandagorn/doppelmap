@@ -444,13 +444,39 @@ body {
   background: var(--accent-soft);
   color: var(--text);
 }
+/* Score and label sit underneath both portraits, at every width.
+   They used to sit between the faces, where the column has to carry a
+   percentage and a label that wraps to two lines -- taller than the faces
+   themselves, which left the two portraits visibly staggered. Putting it
+   below was first done only under a media query, which meant the layout
+   depended on guessing a breakpoint, and every guess missed somebody's
+   device. There is no breakpoint now: one layout everywhere.
+
+   Stretch, not center, so the two sides share a row height even though
+   their credits wrap to different numbers of lines. DOM order is
+   face, score, face, so placement is explicit. */
 #pair-body {
-  display: flex;
-  /* Stretch, not center: the two sides carry credits of different lengths,
-     and centring each one independently left the portraits at different
-     heights. */
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   align-items: stretch;
-  gap: 22px;
+  gap: 16px 22px;
+}
+#pair-body .pair-side:first-child {
+  grid-area: 1 / 1;
+}
+#pair-body .pair-side:last-child {
+  grid-area: 1 / 2;
+}
+#pair-body .pair-score {
+  grid-area: 2 / 1 / auto / -1;
+  flex-direction: row;
+  align-items: baseline;
+  justify-content: center;
+  gap: 10px;
+}
+#pair-body .pair-band {
+  margin-top: 0;
+  max-width: none;
 }
 .pair-side {
   margin: 0;
@@ -514,62 +540,12 @@ body {
   letter-spacing: 0.06em;
   color: var(--text-muted);
 }
-/* Tablets and landscape phones need the stacked comparison too. The
-   breakpoint was 640px, which left every iPad and every phone turned
-   sideways on the side-by-side layout. 1000px covers a Pro Max in
-   landscape (932) and an iPad Pro in portrait (1024 is over, but its card
-   is wide enough for the label to sit on one line beside the faces). */
 @media (max-width: 1000px) {
   #pair-card {
     padding: 24px 18px;
   }
-  /* Score and label move underneath both portraits.
-     Between them, the middle column has to carry a percentage and a label
-     that wraps to two lines at this width, which made it taller than the
-     faces and -- with the row centred -- left the two portraits sitting at
-     visibly different heights. Below, it is one line under a tidy pair.
-     The DOM order is face, score, face, so the placement is explicit. */
   #pair-body {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 12px 12px;
-    /* The flex layout's align-items: center carries over and would centre
-       each column instead of stretching it to the row height, which is what
-       lets the buttons line up. */
-    align-items: stretch;
-  }
-  #pair-body .pair-side:first-child {
-    grid-area: 1 / 1;
-  }
-  #pair-body .pair-side:last-child {
-    grid-area: 1 / 2;
-  }
-  #pair-body .pair-score {
-    grid-area: 2 / 1 / auto / -1;
-    flex-direction: row;
-    align-items: baseline;
-    justify-content: center;
-    gap: 8px;
-  }
-  /* No longer sharing the row with the score, so they can be larger. */
-  #pair-body .pair-face,
-  #pair-body .pair-fallback {
-    width: min(38vw, 220px);
-    height: min(38vw, 220px);
-  }
-  #pair-body figcaption,
-  #pair-body .pair-credit {
-    max-width: min(38vw, 220px);
-  }
-  #pair-body .pair-band {
-    margin-top: 0;
-    max-width: none;
-  }
-  /* Credits wrap to different numbers of lines, which left the two "View on
-     map" buttons at different heights. The grid row gives both sides the same
-     height; this pins the button to the bottom of each. */
-  #pair-body .pair-goto {
-    margin-top: auto;
+    gap: 12px;
   }
   /* Sized in vw and kept square. These rules used to target .pair-side img,
      which stopped existing when the faces became background-cropped spans:
@@ -720,20 +696,23 @@ body {
   font-size: 10.5px;
   color: var(--text-muted);
   text-align: center;
-  max-width: 190px;
+  max-width: min(38vw, 190px);
   line-height: 1.35;
 }
+/* Fluid rather than fixed, so the pair fits a narrow phone without a
+   breakpoint deciding when: 38vw is the most a face can take when two sit
+   side by side with a gap, and 190px is where it stops growing. */
 .pair-face {
-  width: 190px;
-  height: 190px;
+  width: min(38vw, 190px);
+  height: min(38vw, 190px);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
 }
 .pair-fallback {
-  width: 190px;
-  height: 190px;
+  width: min(38vw, 190px);
+  height: min(38vw, 190px);
   border-radius: var(--radius);
-  font-size: 48px;
+  font-size: clamp(28px, 9vw, 48px);
 }
 
 /* #hover-preview is a <img> in markup but is painted as a cropped
