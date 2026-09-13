@@ -556,7 +556,18 @@ with tqdm(total=len(jobs), desc="embed") as bar:
         else:
             found = faces_in(img)
             if found:
-                results[person].append({**rec, "faces": found})
+                # The size actually detected on, which is NOT rec["width"].
+                # Commons serves ?width=800 from a per-image bucket list and
+                # picks the nearest available (960, 727, 509 ...), and the
+                # last retry falls back to the full-size original -- so the
+                # scale cannot be recovered later. Without this the boxes get
+                # normalised against the original's dimensions and every face
+                # in an image larger than the thumbnail lands up and to the
+                # left of the real one.
+                height, width = img.shape[:2]
+                results[person].append(
+                    {**rec, "det_width": width, "det_height": height, "faces": found}
+                )
                 stats["ok"] += 1
                 stats["faces"] += len(found)
             else:

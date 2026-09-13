@@ -180,6 +180,24 @@ def _plain_text(value: str, limit: int = 70) -> str:
     return text[:limit]
 
 
+def _detected_size(record: dict) -> tuple[float, float]:
+    """The pixel size the face boxes are expressed in.
+
+    Not the image's own width/height: the collector detects on a Commons
+    thumbnail, and ?width=800 is served from a per-image bucket list, so the
+    result is 960 or 727 or 509 rather than 800. Normalising the boxes by the
+    original's dimensions put every face up and to the left of the real one,
+    by the ratio between the two -- which is why a crop could land on the
+    backdrop beside someone's head.
+
+    Records collected before det_width was stored fall back to the original
+    dimensions, which is what they were already being scaled by.
+    """
+    width = record.get("det_width") or record.get("width") or 1
+    height = record.get("det_height") or record.get("height") or 1
+    return float(width), float(height)
+
+
 def _photo_ref(face) -> dict:
     """A face as the frontend needs it: which Commons file, and where in it.
 
@@ -191,8 +209,7 @@ def _photo_ref(face) -> dict:
     """
     record, i = face.record, face.index
     box = record["faces"][i]["bbox"] if "faces" in record else [0, 0, 1, 1]
-    width = record.get("width") or 1
-    height = record.get("height") or 1
+    width, height = _detected_size(record)
     return {
         "f": record.get("title", "").replace("File:", ""),
         "b": [round(box[0] / width, 4), round(box[1] / height, 4),
@@ -272,8 +289,7 @@ def build_dataset_from_commons(
         box = face.record["faces"][face.index]["bbox"] if "faces" in face.record else None
         if not box:
             return 0.0
-        width = face.record.get("width") or 1
-        height = face.record.get("height") or 1
+        width, height = _detected_size(face.record)
         return ((box[2] - box[0]) / width) * ((box[3] - box[1]) / height)
 
     def ranked(name):
