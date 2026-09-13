@@ -130,7 +130,10 @@ def names_the_person(name, title, url=""):
     return key in strip_accents(f"{title} {url}").replace("_", " ").lower()
 
 
-# ==== CELL 4 - discover candidate images ===================================
+# ==== CELL 3A - shared HTTP helpers ========================================
+# Split out of the discovery cell so the people filter below can use them
+# too. Order matters: the filter has to shrink PEOPLE *before* CELL 4
+# builds its work list from it, or it silently does nothing.
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -183,6 +186,97 @@ def api_get(url, params):
     return None
 
 
+# ==== CELL 3B - keep only real people ======================================
+# Pageview rankings are full of fictional characters: Wade Wilson, Sherlock
+# Holmes, Darth Vader all out-rank plenty of real actors. Their Commons
+# images are drawings, costumes and stills, so they poison a face map.
+#
+# Wikidata settles it authoritatively -- "instance of (P31) = human (Q5)".
+# That keeps historical figures like Cleopatra and Napoleon, who a
+# born-after-photography heuristic would wrongly discard, and drops
+# fictional humans like Sherlock Holmes, who a name check never could.
+#
+# Two batched calls per 50 people, on endpoints unrelated to the heavily
+# rate-limited Commons search, so this is cheap: ~200 requests for 5,000.
+
+REAL_PEOPLE_CACHE = f"{WORK}/real_people.json"
+HUMAN = "Q5"
+
+
+def _chunks(seq, n=50):
+    for i in range(0, len(seq), n):
+        yield seq[i:i + n]
+
+
+def wikidata_ids(names):
+    """Wikipedia titles -> Wikidata QIDs, following redirects."""
+    out = {}
+    for batch in _chunks(names):
+        data = api_get("https://en.wikipedia.org/w/api.php", {
+            "action": "query", "format": "json", "prop": "pageprops",
+            "redirects": "1", "titles": "|".join(batch),
+        })
+        if not data or "query" not in data:
+            continue
+        q = data["query"]
+        # Map the title the API answers with back to the name we asked for.
+        norm = {n["from"]: n["to"] for n in q.get("normalized", [])}
+        redir = {r["from"]: r["to"] for r in q.get("redirects", [])}
+        asked = {}
+        for name in batch:
+            t = norm.get(name, name)
+            asked[redir.get(t, t)] = name
+        for page in q.get("pages", {}).values():
+            qid = (page.get("pageprops") or {}).get("wikibase_item")
+            if qid:
+                out[asked.get(page["title"], page["title"])] = qid
+    return out
+
+
+def humans_only(names):
+    """Subset of `names` that Wikidata says are actual people."""
+    cached = {}
+    if os.path.exists(REAL_PEOPLE_CACHE):
+        with open(REAL_PEOPLE_CACHE, encoding="utf-8") as fh:
+            cached = json.load(fh)
+
+    unknown = [n for n in names if n not in cached]
+    if unknown:
+        ids = wikidata_ids(unknown)
+        for batch in _chunks([n for n in unknown if n in ids]):
+            data = api_get("https://www.wikidata.org/w/api.php", {
+                "action": "wbgetentities", "format": "json",
+                "ids": "|".join(ids[n] for n in batch), "props": "claims",
+            })
+            if not data:
+                continue
+            for name in batch:
+                entity = (data.get("entities") or {}).get(ids[name])
+                if entity is None:
+                    continue
+                claims = entity.get("claims", {}).get("P31", [])
+                kinds = [c["mainsnak"]["datavalue"]["value"]["id"]
+                         for c in claims if c["mainsnak"].get("datavalue")]
+                cached[name] = HUMAN in kinds
+        # Anything still unresolved is kept rather than guessed away: a
+        # missing Wikidata entry is not evidence of being fictional.
+        for name in unknown:
+            cached.setdefault(name, True)
+        tmp = REAL_PEOPLE_CACHE + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as fh:
+            json.dump(cached, fh, ensure_ascii=False)
+        os.replace(tmp, REAL_PEOPLE_CACHE)
+
+    return [n for n in names if cached.get(n, True)]
+
+
+before = len(PEOPLE)
+PEOPLE = humans_only(PEOPLE)
+print(f"{before - len(PEOPLE)} non-people removed, {len(PEOPLE)} remain")
+
+
+# ==== CELL 4 - discover candidate images ===================================
+# Needs CELL 3A (session/api_get) and CELL 3B (filtered PEOPLE).
 def discover(name):
     """Commons images plausibly showing `name`, with their metadata.
 
@@ -275,95 +369,6 @@ if failed:
 candidates = {p: cache[p] for p in todo if p in cache}
 print(f"{sum(len(v) for v in candidates.values())} candidate images "
       f"across {len(candidates)} people")
-
-
-# ==== CELL 3B - keep only real people ======================================
-# Pageview rankings are full of fictional characters: Wade Wilson, Sherlock
-# Holmes, Darth Vader all out-rank plenty of real actors. Their Commons
-# images are drawings, costumes and stills, so they poison a face map.
-#
-# Wikidata settles it authoritatively -- "instance of (P31) = human (Q5)".
-# That keeps historical figures like Cleopatra and Napoleon, who a
-# born-after-photography heuristic would wrongly discard, and drops
-# fictional humans like Sherlock Holmes, who a name check never could.
-#
-# Two batched calls per 50 people, on endpoints unrelated to the heavily
-# rate-limited Commons search, so this is cheap: ~200 requests for 5,000.
-
-REAL_PEOPLE_CACHE = f"{WORK}/real_people.json"
-HUMAN = "Q5"
-
-
-def _chunks(seq, n=50):
-    for i in range(0, len(seq), n):
-        yield seq[i:i + n]
-
-
-def wikidata_ids(names):
-    """Wikipedia titles -> Wikidata QIDs, following redirects."""
-    out = {}
-    for batch in _chunks(names):
-        data = api_get("https://en.wikipedia.org/w/api.php", {
-            "action": "query", "format": "json", "prop": "pageprops",
-            "redirects": "1", "titles": "|".join(batch),
-        })
-        if not data or "query" not in data:
-            continue
-        q = data["query"]
-        # Map the title the API answers with back to the name we asked for.
-        norm = {n["from"]: n["to"] for n in q.get("normalized", [])}
-        redir = {r["from"]: r["to"] for r in q.get("redirects", [])}
-        asked = {}
-        for name in batch:
-            t = norm.get(name, name)
-            asked[redir.get(t, t)] = name
-        for page in q.get("pages", {}).values():
-            qid = (page.get("pageprops") or {}).get("wikibase_item")
-            if qid:
-                out[asked.get(page["title"], page["title"])] = qid
-    return out
-
-
-def humans_only(names):
-    """Subset of `names` that Wikidata says are actual people."""
-    cached = {}
-    if os.path.exists(REAL_PEOPLE_CACHE):
-        with open(REAL_PEOPLE_CACHE, encoding="utf-8") as fh:
-            cached = json.load(fh)
-
-    unknown = [n for n in names if n not in cached]
-    if unknown:
-        ids = wikidata_ids(unknown)
-        for batch in _chunks([n for n in unknown if n in ids]):
-            data = api_get("https://www.wikidata.org/w/api.php", {
-                "action": "wbgetentities", "format": "json",
-                "ids": "|".join(ids[n] for n in batch), "props": "claims",
-            })
-            if not data:
-                continue
-            for name in batch:
-                entity = (data.get("entities") or {}).get(ids[name])
-                if entity is None:
-                    continue
-                claims = entity.get("claims", {}).get("P31", [])
-                kinds = [c["mainsnak"]["datavalue"]["value"]["id"]
-                         for c in claims if c["mainsnak"].get("datavalue")]
-                cached[name] = HUMAN in kinds
-        # Anything still unresolved is kept rather than guessed away: a
-        # missing Wikidata entry is not evidence of being fictional.
-        for name in unknown:
-            cached.setdefault(name, True)
-        tmp = REAL_PEOPLE_CACHE + ".tmp"
-        with open(tmp, "w", encoding="utf-8") as fh:
-            json.dump(cached, fh, ensure_ascii=False)
-        os.replace(tmp, REAL_PEOPLE_CACHE)
-
-    return [n for n in names if cached.get(n, True)]
-
-
-before = len(PEOPLE)
-PEOPLE = humans_only(PEOPLE)
-print(f"{before - len(PEOPLE)} non-people removed, {len(PEOPLE)} remain")
 
 
 # ==== CELL 5 - download (threads) + embed (GPU) ============================
