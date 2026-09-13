@@ -73,8 +73,12 @@ import unicodedata
 with open(PEOPLE_FILE, encoding="utf-8") as fh:
     raw_people = json.load(fh)
 
-# Accepts either ["Tom Hanks", ...] or [{"name": ..., "views": ...}, ...],
-# so it fits whatever your pageview ranking step already emits.
+# Accepts the shapes the ranking step has produced so far: a bare list of
+# names, a list of {"name"/"article", "views"} objects, or either of those
+# wrapped in {"people": [...]}.
+if isinstance(raw_people, dict):
+    raw_people = raw_people.get("people", raw_people.get("names", []))
+
 if raw_people and isinstance(raw_people[0], dict):
     def _name_of(p):
         return p.get("name") or p.get("article", "").replace("_", " ")
