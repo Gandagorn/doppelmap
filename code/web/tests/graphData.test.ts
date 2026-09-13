@@ -6,18 +6,18 @@ function sampleData(): GraphData {
   return {
     meta: { version: "test", count: 3, k: 2 },
     nodes: [
-      { id: 0, name: "Alice", x: 0, y: 0, deg: 2, thumb: "thumbs/0.webp", attr: "synthetic", popularity: 10 },
-      { id: 1, name: "Bob", x: 10, y: 10, deg: 1, thumb: "thumbs/1.webp", attr: "synthetic", popularity: 8 },
-      { id: 2, name: "Carol", x: 20, y: 5, deg: 1, thumb: "thumbs/2.webp", attr: "synthetic", popularity: 5 },
+      { id: 0, name: "Alice", x: 0, y: 0, deg: 2, faces: 12 },
+      { id: 1, name: "Bob", x: 10, y: 10, deg: 1, faces: 12 },
+      { id: 2, name: "Carol", x: 20, y: 5, deg: 1, faces: 12 },
     ],
     edges: [
       [0, 1, 0.9],
       [0, 2, 0.5],
     ],
     similar: {
-      "0": [[1, 0.9], [2, 0.5]],
-      "1": [[0, 0.9]],
-      "2": [[0, 0.5]],
+      "0": [[1, 0.9, 0, 0], [2, 0.5, 0, 0]],
+      "1": [[0, 0.9, 0, 0]],
+      "2": [[0, 0.5, 0, 0]],
     },
   };
 }
@@ -36,7 +36,7 @@ describe("buildGraphology", () => {
   it("copies node attributes across", () => {
     const graph = buildGraphology(sampleData(), false);
     expect(graph.getNodeAttribute("1", "label")).toBe("Bob");
-    expect(graph.getNodeAttribute("1", "thumb")).toBe("thumbs/1.webp");
+    expect(graph.getNodeAttribute("1", "deg")).toBe(1);
   });
 
   it("connects the correct endpoints", () => {

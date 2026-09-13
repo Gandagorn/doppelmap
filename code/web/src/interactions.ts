@@ -70,11 +70,20 @@ export function escapeHtml(value: string): string {
 export interface SidebarData {
   id: number;
   name: string;
-  thumb: string;
-  attr: string;
-  // `weight` is the raw similarity alongside the display-formatted
-  // `percent` -- the pair-comparison view re-formats it itself.
-  similar: { id: number; name: string; percent: string; weight: number; thumb: string }[];
+  /** One row of the similar-people list.
+   *
+   *  `weight` is the raw similarity alongside the display-formatted
+   *  `percent`, since the comparison view re-formats it at a larger size.
+   *  `myPhoto` / `theirPhoto` index into each person's photos.json entry
+   *  and name the two photographs that actually match. */
+  similar: {
+    id: number;
+    name: string;
+    percent: string;
+    weight: number;
+    myPhoto: number;
+    theirPhoto: number;
+  }[];
 }
 
 export function getSidebarData(data: GraphData, nodeId: number): SidebarData {
@@ -85,14 +94,13 @@ export function getSidebarData(data: GraphData, nodeId: number): SidebarData {
   return {
     id: node.id,
     name: node.name,
-    thumb: node.thumb,
-    attr: node.attr,
-    similar: ranked.map(([id, weight]) => ({
+    similar: ranked.map(([id, weight, myPhoto, theirPhoto]) => ({
       id,
       name: nodesById.get(id)?.name ?? "Unknown",
       percent: formatSimilarity(weight),
       weight,
-      thumb: nodesById.get(id)?.thumb ?? "",
+      myPhoto: myPhoto ?? 0,
+      theirPhoto: theirPhoto ?? 0,
     })),
   };
 }

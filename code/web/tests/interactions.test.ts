@@ -7,18 +7,19 @@ function sampleData(): GraphData {
   return {
     meta: { version: "test", count: 3, k: 2 },
     nodes: [
-      { id: 0, name: "Alice", x: 0, y: 0, deg: 2, thumb: "thumbs/0.webp", attr: "synthetic", popularity: 10 },
-      { id: 1, name: "Bob", x: 10, y: 10, deg: 1, thumb: "thumbs/1.webp", attr: "synthetic", popularity: 8 },
-      { id: 2, name: "Carol", x: 20, y: 5, deg: 1, thumb: "thumbs/2.webp", attr: "synthetic", popularity: 5 },
+      { id: 0, name: "Alice", x: 0, y: 0, deg: 2, faces: 12 },
+      { id: 1, name: "Bob", x: 10, y: 10, deg: 1, faces: 12 },
+      { id: 2, name: "Carol", x: 20, y: 5, deg: 1, faces: 12 },
     ],
     edges: [
       [0, 1, 0.912],
       [0, 2, 0.5],
     ],
     similar: {
-      "0": [[1, 0.912], [2, 0.5]],
-      "1": [[0, 0.912]],
-      "2": [[0, 0.5]],
+      // [otherId, similarity, myPhotoIndex, theirPhotoIndex]
+      "0": [[1, 0.912, 2, 3], [2, 0.5, 0, 1]],
+      "1": [[0, 0.912, 0, 0]],
+      "2": [[0, 0.5, 0, 0]],
     },
   };
 }
@@ -91,8 +92,8 @@ describe("getSidebarData", () => {
     const sidebar = getSidebarData(sampleData(), 0);
     expect(sidebar.name).toBe("Alice");
     expect(sidebar.similar).toEqual([
-      { id: 1, name: "Bob", percent: "91.2%", weight: 0.912, thumb: "thumbs/1.webp" },
-      { id: 2, name: "Carol", percent: "50%", weight: 0.5, thumb: "thumbs/2.webp" },
+      { id: 1, name: "Bob", percent: "91.2%", weight: 0.912, myPhoto: 2, theirPhoto: 3 },
+      { id: 2, name: "Carol", percent: "50%", weight: 0.5, myPhoto: 0, theirPhoto: 1 },
     ]);
   });
 

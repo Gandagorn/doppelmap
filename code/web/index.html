@@ -19,16 +19,6 @@
           <input id="search" type="text" placeholder="Search a name..." autocomplete="off" />
           <div id="search-results"></div>
         </div>
-        <div id="popularity-control">
-          <label for="popularity-slider">Fame level: <span id="popularity-label">Top 20%</span></label>
-          <input id="popularity-slider" type="range" min="0" max="3" value="2" step="1" />
-          <span
-            class="info-icon"
-            tabindex="0"
-            title="Moving this toward &quot;Show all&quot; increases how many people are shown, including less famous ones."
-            >ⓘ</span
-          >
-        </div>
         <button id="walk-toggle" class="pill-btn" type="button">▶ Walk the Graph</button>
         <div class="menu-wrap">
           <button id="dashboard-toggle" class="pill-btn" type="button" aria-label="Show most similar pairs">🏆 Top Pairs</button>
@@ -44,18 +34,28 @@
             <button id="about-close" type="button" aria-label="Close">✕</button>
             <h2>About Doppelmap</h2>
             <p>
-              Doppelmap maps face-similarity between public figures using real
-              ArcFace face embeddings (InsightFace <code>buffalo_l</code>)
-              computed over photos from the IMDB-WIKI dataset. Points are laid
-              out with UMAP, then refined so visually-similar faces end up
-              close together on the map. Profile photos are looked up live from
-              Wikipedia when you click a name.
+              Doppelmap maps face-similarity between public figures. Every
+              photograph comes from Wikimedia Commons and is turned into a
+              512-number ArcFace face embedding (InsightFace
+              <code>buffalo_l</code>); each person is reduced to a single
+              consensus face, and UMAP lays those out so people who look
+              alike sit near each other.
             </p>
             <p>
-              Coverage is bounded by that source dataset (celebrity photos
-              crawled from IMDb/Wikipedia around 2015) — anyone who wasn't
-              already well-photographed by then, or rose to fame since, won't
-              appear here.
+              Pick anyone to see their closest matches. The ⇄ button shows
+              the two photographs that actually match — not two arbitrary
+              portraits, but the specific pair the model rates highest.
+            </p>
+            <p>
+              Similarity is raw cosine distance between faces. It runs lower
+              than intuition suggests: photos of the <em>same</em> person
+              typically score above 0.35, so two different people at 0.30
+              is already a striking resemblance.
+            </p>
+            <p>
+              Images are CC-licensed or public domain, credited on each
+              photo. People are drawn from the most-viewed English Wikipedia
+              biographies; fictional characters are excluded.
             </p>
             <p>
               <a href="https://github.com/Gandagorn/doppelmap" target="_blank" rel="noopener noreferrer">

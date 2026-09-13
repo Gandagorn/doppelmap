@@ -45,8 +45,6 @@ export function buildGraphology(data: GraphData, isDark: boolean): Graph {
       y: node.y,
       size: 1.5 + Math.sqrt(node.deg) * 0.6,
       color: nodeColor(isDark),
-      thumb: node.thumb,
-      attr: node.attr,
       deg: node.deg,
     });
   }

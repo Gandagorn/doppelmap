@@ -46,7 +46,6 @@ body {
 /* Shared "floating panel" look for every overlay control. */
 #search,
 #search-results,
-#popularity-control,
 #about-toggle,
 #about-panel,
 #dashboard-toggle,
@@ -136,27 +135,6 @@ body {
   background: var(--accent-soft);
 }
 
-#popularity-control {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 13px;
-  padding: 8px 14px;
-  border-radius: 10px;
-  white-space: nowrap;
-  min-width: 0;
-}
-#popularity-control input[type="range"] {
-  width: 120px;
-  min-width: 60px;
-  accent-color: var(--accent);
-}
-.info-icon {
-  color: var(--text-muted);
-  font-size: 14px;
-  cursor: help;
-  border-bottom: 1px dotted var(--text-muted);
-}
 
 .pill-btn {
   padding: 9px 14px;
@@ -613,4 +591,81 @@ body {
 }
 .known-for[hidden] {
   display: none;
+}
+
+
+/* --- real faces -------------------------------------------------------- */
+/* Photos are cropped to the detected face by an inline transform, so each
+   one needs a frame that clips it. Without overflow:hidden the scaled
+   image spills over everything around it. */
+#sidebar-photo,
+.similar-list li,
+.pair-side {
+  overflow: hidden;
+}
+#sidebar-photo {
+  width: 160px;
+  height: 160px;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  background: var(--accent-soft);
+}
+.face,
+.row-thumb,
+.pair-face {
+  display: block;
+  background-color: var(--accent-soft);
+}
+.row-thumb {
+  border-radius: 50%;
+  flex: none;
+  background: var(--accent-soft);
+}
+/* Shown until photos.json arrives, and for anyone without a usable crop. */
+.face-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
+  border-radius: 50%;
+  flex: none;
+  letter-spacing: 0.02em;
+}
+#sidebar-photo .face-fallback {
+  border-radius: var(--radius);
+  font-size: 42px;
+}
+.credit {
+  margin: -10px 0 16px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--text-muted);
+}
+.pair-credit {
+  font-size: 10.5px;
+  color: var(--text-muted);
+  text-align: center;
+  max-width: 190px;
+  line-height: 1.35;
+}
+.pair-face {
+  width: 190px;
+  height: 190px;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+.pair-fallback {
+  width: 190px;
+  height: 190px;
+  border-radius: var(--radius);
+  font-size: 48px;
+}
+
+/* #hover-preview is a <img> in markup but is painted as a cropped
+   background, so it needs a box of its own rather than intrinsic size. */
+#hover-preview {
+  width: 200px;
+  height: 200px;
 }

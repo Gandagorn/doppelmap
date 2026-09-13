@@ -5,14 +5,14 @@ import { searchNames } from "./search";
 import { flyToNode, getSidebarData, formatSimilarity, escapeHtml } from "./interactions";
 import { DIM_NODE_COLOR, FADED_EDGE_COLOR, SELECTED_NODE_COLOR } from "./theme";
 import { fetchWikipediaInfo } from "./wikipediaPhoto";
-import type { GraphData, GraphNode } from "./types";
+import { faceCropStyle, loadPhotos, photoUrl, photosFor } from "./photos";
+import type { GraphData, GraphNode, PhotoRef } from "./types";
 
-// Each popularity level is its own precomputed dataset (own kNN graph, own
-// layout) rather than a filtered view of one big graph -- see
-// build_dataset.py's POPULARITY_LEVELS. Order matches the slider's 4 steps.
-const LEVEL_FILES = ["graph-all.json", "graph-top50.json", "graph-top20.json", "graph-top5.json"];
-const LEVEL_LABELS = ["Show all", "Top 50%", "Top 20%", "Top 5%"];
-const DEFAULT_LEVEL_INDEX = 2;
+// One graph, not a stack of popularity levels. The fame slider filtered on
+// how many photos a person had, which was only ever a proxy for fame, and
+// the Commons collector gives everyone a comparable handful.
+const GRAPH_FILE = "graph.json";
+const PHOTOS_FILE = "photos.json";
 
 const WALK_STEP_MS = 2000;
 
@@ -25,8 +25,6 @@ async function bootstrap() {
   const toolbarEl = document.getElementById("toolbar") as HTMLElement;
   const searchInput = document.getElementById("search") as HTMLInputElement;
   const resultsEl = document.getElementById("search-results") as HTMLDivElement;
-  const popularitySlider = document.getElementById("popularity-slider") as HTMLInputElement;
-  const popularityLabelEl = document.getElementById("popularity-label") as HTMLSpanElement;
   const dashboardToggle = document.getElementById("dashboard-toggle") as HTMLButtonElement;
   const dashboardEl = document.getElementById("dashboard") as HTMLElement;
   const dashboardClose = document.getElementById("dashboard-close") as HTMLButtonElement;
@@ -40,21 +38,7 @@ async function bootstrap() {
   const pairBody = document.getElementById("pair-body") as HTMLElement;
   const pairClose = document.getElementById("pair-close") as HTMLButtonElement;
 
-  const initialParams = new URLSearchParams(location.search);
-  const levelParam = initialParams.get("level");
-  if (levelParam !== null) {
-    // Number(null) is 0, not NaN -- checking this only when the param is
-    // actually present, rather than parsing null itself, matters here: a
-    // bare URL with no ?level at all was otherwise silently overriding the
-    // HTML default with level 0.
-    const initialLevel = Number(levelParam);
-    if (Number.isInteger(initialLevel) && initialLevel >= 0 && initialLevel < LEVEL_FILES.length) {
-      popularitySlider.value = String(initialLevel);
-    }
-  }
-  const initialPersonName = initialParams.get("person");
-
-  const dataCache = new Map<number, GraphData>();
+  const initialPersonName = new URLSearchParams(location.search).get("person");
 
   // Total UI state: which node is selected (sidebar open) and which is
   // hovered (dims everything else). Just a plain object mutated in place —
@@ -88,8 +72,6 @@ async function bootstrap() {
   // looking at.
   function updateUrl() {
     const params = new URLSearchParams();
-    const level = Number(popularitySlider.value);
-    if (level !== DEFAULT_LEVEL_INDEX) params.set("level", String(level));
     if (selection.selectedId !== null) {
       const name = data.nodes.find((n) => n.id === selection.selectedId)?.name;
       if (name) params.set("person", name);
@@ -112,6 +94,23 @@ async function bootstrap() {
     updateWalkToggleLabel();
   }
 
+  /** An <img> cropped to a person's face, or a lettered placeholder.
+
+   *  photos.json arrives after the graph, so the first sidebar opened on a
+   *  cold load has no crop to show yet -- hence the initials fallback
+   *  rather than an empty box. */
+  function faceHtml(id: number, name: string, cls: string, width: number): string {
+    const photo = photosFor(id)?.[0];
+    const size = `width:${width}px;height:${width}px`;
+    if (!photo) {
+      const initials = name.split(" ").map((w) => w[0]).join("").slice(0, 2);
+      return `<span class="${cls} face-fallback" style="${size}"
+                    aria-label="${escapeHtml(name)}">${escapeHtml(initials)}</span>`;
+    }
+    return `<span class="${cls}" style="${faceCropStyle(photo, 0.55, width)}${size}"
+                  role="img" aria-label="${escapeHtml(name)}"></span>`;
+  }
+
   function renderSidebar() {
     if (selection.selectedId === null) {
       sidebarEl.hidden = true;
@@ -120,48 +119,42 @@ async function bootstrap() {
       return;
     }
     const info = getSidebarData(data, selection.selectedId);
-    const localThumbSrc = (thumb: string) => `${import.meta.env.BASE_URL}data/${thumb}`;
+    const photo = photosFor(info.id)?.[0];
     sidebarEl.hidden = false;
     sidebarEl.innerHTML = `
-      <img id="sidebar-photo" src="${escapeHtml(localThumbSrc(info.thumb))}" width="160" height="160" alt="${escapeHtml(info.name)}" />
+      <div id="sidebar-photo">${faceHtml(info.id, info.name, "face", 160)}</div>
       <h2>${escapeHtml(info.name)}</h2>
-      <p class="attr">${escapeHtml(info.attr)}</p>
+      <p class="attr"></p>
       <p class="known-for" hidden></p>
+      ${photo ? `<p class="credit">${escapeHtml(photo.c || "Wikimedia Commons")}${
+          photo.l ? ` · ${escapeHtml(photo.l)}` : ""}</p>` : ""}
       <ul class="similar-list">
         ${info.similar
           .map(
             (s) => `
               <li data-id="${s.id}">
-                <img class="row-thumb" src="${escapeHtml(localThumbSrc(s.thumb))}" width="36" height="36" alt="" />
+                ${faceHtml(s.id, s.name, "row-thumb", 36)}
                 <span class="row-name">${escapeHtml(s.name)}</span>
                 <span class="row-percent">${s.percent}</span>
                 <button class="row-compare" type="button" data-compare="${s.id}"
-                        data-w="${s.weight}" title="Compare faces side by side"
+                        data-w="${s.weight}" data-mine="${s.myPhoto}" data-theirs="${s.theirPhoto}"
+                        title="Compare the two closest photos"
                         aria-label="Compare with ${escapeHtml(s.name)}">⇄</button>
               </li>`
           )
           .join("")}
       </ul>
     `;
-    // Preload every neighbor's real photo as soon as the sidebar opens, so
-    // it's already in wikipediaPhoto's cache (usually resolved outright)
-    // by the time the user looks at or clicks one of these rows.
+
     sidebarEl.querySelectorAll<HTMLLIElement>("li[data-id]").forEach((li) => {
-      li.addEventListener("click", () => {
-        selectNodeManually(Number(li.dataset.id));
-      });
-      const name = li.querySelector<HTMLSpanElement>(".row-name")?.textContent ?? "";
-      const img = li.querySelector<HTMLImageElement>(".row-thumb");
-      if (name && img) {
-        fetchWikipediaInfo(name).then((wiki) => {
-          if (wiki.photoUrl) img.src = wiki.photoUrl;
-        });
-      }
-      // Show a larger version of whatever the row currently displays
-      // (placeholder or, usually by now, the real preloaded photo).
+      li.addEventListener("click", () => selectNodeManually(Number(li.dataset.id)));
+
+      // Enlarged preview of whatever this row already shows -- no extra
+      // request, since it is the same Commons image at a bigger width.
       li.addEventListener("mouseenter", () => {
-        if (!img) return;
-        hoverPreview.src = img.src;
+        const p = photosFor(Number(li.dataset.id))?.[0];
+        if (!p) return;
+        hoverPreview.setAttribute("style", faceCropStyle(p, 0.55, 200));
         const rect = li.getBoundingClientRect();
         hoverPreview.style.top = `${Math.max(8, rect.top - 90)}px`;
         hoverPreview.style.left = `${rect.left - 216}px`;
@@ -170,38 +163,34 @@ async function bootstrap() {
       li.addEventListener("mouseleave", () => {
         hoverPreview.hidden = true;
       });
+
       const compare = li.querySelector<HTMLButtonElement>("button[data-compare]");
       compare?.addEventListener("click", (evt) => {
         // Without this the row's own click handler also fires and navigates
-        // away from the person we're trying to compare against.
+        // away from the person we are trying to compare against.
         evt.stopPropagation();
         hoverPreview.hidden = true;
         if (selection.selectedId === null) return;
-        showPair(selection.selectedId, Number(compare.dataset.compare), Number(compare.dataset.w));
+        showPair(
+          selection.selectedId, Number(compare.dataset.compare), Number(compare.dataset.w),
+          Number(compare.dataset.mine), Number(compare.dataset.theirs),
+        );
       });
     });
 
     updateUrl();
 
-    // Instant paint with the local placeholder above; swap in the real
-    // photo/link once (if) it resolves. Guard against the user having
-    // selected a different node (or switched levels) before this fetch
-    // comes back.
+    // Wikipedia supplies the one-line description and a link out. The photo
+    // itself now comes from our own data, so this no longer has to race to
+    // replace a placeholder. Guard against the selection moving on before
+    // the lookup returns.
     const requestedId = selection.selectedId;
     fetchWikipediaInfo(info.name).then((wiki) => {
       if (selection.selectedId !== requestedId) return;
-      if (wiki.photoUrl) {
-        const img = document.getElementById("sidebar-photo") as HTMLImageElement | null;
-        if (img) img.src = wiki.photoUrl;
+      const attrEl = sidebarEl.querySelector<HTMLParagraphElement>(".attr");
+      if (attrEl && wiki.pageUrl) {
+        attrEl.innerHTML = `<a href="${escapeHtml(wiki.pageUrl)}" target="_blank" rel="noopener noreferrer">Wikipedia</a>`;
       }
-      if (wiki.pageUrl) {
-        const attrEl = sidebarEl.querySelector<HTMLParagraphElement>(".attr");
-        if (attrEl) {
-          attrEl.innerHTML = `Photo: <a href="${escapeHtml(wiki.pageUrl)}" target="_blank" rel="noopener noreferrer">Wikipedia</a>`;
-        }
-      }
-      // Wikipedia's own one-liner ("American actor and filmmaker"), which
-      // answers the question every unfamiliar name on this map raises.
       if (wiki.description) {
         const descEl = sidebarEl.querySelector<HTMLParagraphElement>(".known-for");
         if (descEl) {
@@ -296,36 +285,47 @@ async function bootstrap() {
   // you could only ever see one face at a time -- a pair was rendered as
   // one photo plus the other person's name as text. This shows both at
   // once, which is also the thing worth screenshotting.
-  function showPair(idA: number, idB: number, weight: number) {
+  function showPair(
+    idA: number, idB: number, weight: number, photoA = 0, photoB = 0
+  ) {
     const nodesById = new Map(data.nodes.map((n) => [n.id, n]));
     const a = nodesById.get(idA);
     const b = nodesById.get(idB);
     if (!a || !b) return;
 
-    const side = (n: GraphNode) => `
-      <figure class="pair-side">
-        <img src="${escapeHtml(`${import.meta.env.BASE_URL}data/${n.thumb}`)}"
-             alt="${escapeHtml(n.name)}" data-name="${escapeHtml(n.name)}" />
-        <figcaption>${escapeHtml(n.name)}</figcaption>
-        <button class="pair-goto" type="button" data-goto="${n.id}">View on map</button>
-      </figure>`;
+    // The specific photographs the model matched, chosen at build time --
+    // not two arbitrary portraits. Seeing the actual pair is what makes a
+    // resemblance judgeable rather than a number to take on trust.
+    const side = (n: GraphNode, which: number) => {
+      const photo: PhotoRef | undefined = photosFor(n.id)?.[which] ?? photosFor(n.id)?.[0];
+      const media = photo
+        ? `<span class="pair-face" role="img" aria-label="${escapeHtml(n.name)}"
+                 style="${faceCropStyle(photo, 0.75, 190)}"></span>`
+        : `<span class="face-fallback pair-fallback">${escapeHtml(
+            n.name.split(" ").map((w) => w[0]).join("").slice(0, 2))}</span>`;
+      const credit = photo && (photo.c || photo.l)
+        ? `<span class="pair-credit">${escapeHtml(
+            [photo.c, photo.l].filter(Boolean).join(" · "))}</span>`
+        : "";
+      return `
+        <figure class="pair-side">
+          ${media}
+          <figcaption>${escapeHtml(n.name)}</figcaption>
+          ${credit}
+          <button class="pair-goto" type="button" data-goto="${n.id}">View on map</button>
+        </figure>`;
+    };
 
     pairBody.innerHTML = `
-      ${side(a)}
+      ${side(a, photoA)}
       <div class="pair-score">
         <strong>${formatSimilarity(weight)}</strong>
         <span>similarity</span>
       </div>
-      ${side(b)}
+      ${side(b, photoB)}
     `;
     pairView.hidden = false;
 
-    // Same instant-placeholder-then-swap pattern the sidebar uses.
-    pairBody.querySelectorAll<HTMLImageElement>("img[data-name]").forEach((img) => {
-      fetchWikipediaInfo(img.dataset.name ?? "").then((wiki) => {
-        if (wiki.photoUrl) img.src = wiki.photoUrl;
-      });
-    });
     pairBody.querySelectorAll<HTMLButtonElement>("button[data-goto]").forEach((btn) => {
       btn.addEventListener("click", () => {
         closePair();
@@ -346,45 +346,30 @@ async function bootstrap() {
       .map(([a, b, w]) => {
         const nameA = nodesById.get(a)?.name ?? "Unknown";
         const nameB = nodesById.get(b)?.name ?? "Unknown";
-        return `<li data-a="${a}" data-b="${b}" data-w="${w}">${escapeHtml(nameA)} ↔ ${escapeHtml(nameB)} (${formatSimilarity(w)})</li>`;
+        const match = (data.similar[String(a)] ?? []).find((e) => e[0] === b);
+        return `<li data-a="${a}" data-b="${b}" data-w="${w}" data-mine="${match?.[2] ?? 0}" data-theirs="${match?.[3] ?? 0}">${escapeHtml(nameA)} ↔ ${escapeHtml(nameB)} (${formatSimilarity(w)})</li>`;
       })
       .join("");
     dashboardListEl.querySelectorAll<HTMLLIElement>("li[data-a]").forEach((li) => {
       li.addEventListener("click", () => {
         // A dashboard row *is* a pair -- it used to just select one half and
         // drop the other, which threw away the comparison being pointed at.
-        showPair(Number(li.dataset.a), Number(li.dataset.b), Number(li.dataset.w));
+        showPair(Number(li.dataset.a), Number(li.dataset.b), Number(li.dataset.w),
+                 Number(li.dataset.mine), Number(li.dataset.theirs));
         dashboardEl.hidden = true;
       });
     });
   }
 
-  async function loadLevel(levelIndex: number) {
-    // Node ids are just a per-level array index (see build_dataset.py), not
-    // stable across levels -- carry the selection over by name instead, and
-    // only actually drop it if this level filtered that person out.
-    const previouslySelectedName =
-      selection.selectedId !== null && data
-        ? (data.nodes.find((n) => n.id === selection.selectedId)?.name ?? null)
-        : null;
+  async function loadGraph() {
+    data = await loadGraphData(`${import.meta.env.BASE_URL}data/${GRAPH_FILE}`);
+    // Kicked off, not awaited: photos.json is several times the size of the
+    // graph and only needed once someone opens a person, so the map appears
+    // without waiting for it.
+    loadPhotos(`${import.meta.env.BASE_URL}data/${PHOTOS_FILE}`).then(() => {
+      if (selection.selectedId !== null) renderSidebar();
+    });
 
-    stopWalk();
-    selection.selectedId = null;
-    selection.hoveredId = null;
-    resultsEl.innerHTML = "";
-    searchInput.value = "";
-    renderSidebar();
-
-    let levelData = dataCache.get(levelIndex);
-    if (!levelData) {
-      levelData = await loadGraphData(
-        `${import.meta.env.BASE_URL}data/${LEVEL_FILES[levelIndex]}`
-      );
-      dataCache.set(levelIndex, levelData);
-    }
-    data = levelData;
-
-    if (renderer) renderer.kill();
     graph = buildGraphology(data, isDark);
     renderer = new Sigma(graph, container as HTMLElement, {
       // Our nodes are deliberately small (1.5-4px), so Sigma's default
@@ -474,13 +459,7 @@ async function bootstrap() {
       }
     });
 
-    popularityLabelEl.textContent = LEVEL_LABELS[levelIndex];
     renderDashboard();
-
-    if (previouslySelectedName) {
-      const stillPresent = data.nodes.find((n) => n.name === previouslySelectedName);
-      if (stillPresent) selectNode(stillPresent.id);
-    }
   }
 
   window.addEventListener("keydown", (evt) => {
@@ -498,10 +477,6 @@ async function bootstrap() {
   pairView.addEventListener("click", (evt) => {
     // Backdrop only -- clicks inside the card shouldn't dismiss it.
     if (evt.target === pairView) closePair();
-  });
-
-  popularitySlider.addEventListener("input", () => {
-    loadLevel(Number(popularitySlider.value)).catch((err) => console.error(err));
   });
 
   walkToggle.addEventListener("click", () => {
@@ -548,7 +523,7 @@ async function bootstrap() {
     }, 100);
   });
 
-  await loadLevel(Number(popularitySlider.value));
+  await loadGraph();
   // Deferred one frame: right after `new Sigma(...)`, in the same tick,
   // its display data (node positions in camera space) hasn't been computed
   // by an actual render pass yet, so flyToNode's camera.animate() targets
