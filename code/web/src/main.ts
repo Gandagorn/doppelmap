@@ -2,7 +2,10 @@ import Sigma from "sigma";
 import { loadGraphData, buildGraphology } from "./graphData";
 import { getDisplayMode } from "./sigmaSetup";
 import { searchNames } from "./search";
-import { flyToNode, getSidebarData, formatSimilarity, escapeHtml } from "./interactions";
+import type { SidebarRow } from "./interactions";
+import {
+  flyToNode, getSidebarData, formatSimilarity, escapeHtml, groupByResemblance,
+} from "./interactions";
 import { DIM_NODE_COLOR, FADED_EDGE_COLOR, SELECTED_NODE_COLOR } from "./theme";
 import { fetchWikipediaInfo } from "./wikipediaPhoto";
 import { faceCropStyle, loadPhotos, photoUrl, photosFor } from "./photos";
@@ -118,6 +121,42 @@ async function bootstrap() {
       updateUrl();
       return;
     }
+  /** The similar list, grouped under plain-language headings.
+   *
+   *  Scores below the floor are not shown at all: they are indistinguishable
+   *  from each other and from nothing. Someone with no match above it still
+   *  gets told who their closest is, because an empty panel reads as a
+   *  broken page rather than as an answer.
+   */
+  const renderSimilar = (info: ReturnType<typeof getSidebarData>) => {
+    const row = (s: SidebarRow) => `
+      <li data-id="${s.id}">
+        ${faceHtml(s.id, s.name, "row-thumb", 36)}
+        <span class="row-name">${escapeHtml(s.name)}</span>
+        <span class="row-percent">${s.percent}</span>
+        <button class="row-compare" type="button" data-compare="${s.id}"
+                data-w="${s.weight}" data-mine="${s.myPhoto}" data-theirs="${s.theirPhoto}"
+                title="Compare the two closest photos"
+                aria-label="Compare with ${escapeHtml(s.name)}">⇄</button>
+      </li>`;
+
+    const groups = groupByResemblance(info.similar);
+    if (!groups.length) {
+      const closest = info.similar[0];
+      return `<p class="no-resemblance">No one in this dataset looks much like
+        ${escapeHtml(info.name)}.${closest
+          ? ` The closest is ${escapeHtml(closest.name)}, at ${closest.percent}.`
+          : ""}</p>`;
+    }
+    return groups
+      .map(
+        (g) => `
+        <h3 class="resemblance-band">${escapeHtml(g.label)}</h3>
+        <ul class="similar-list">${g.entries.map(row).join("")}</ul>`
+      )
+      .join("");
+  };
+
     const info = getSidebarData(data, selection.selectedId);
     const photo = photosFor(info.id)?.[0];
     sidebarEl.hidden = false;
@@ -128,22 +167,7 @@ async function bootstrap() {
       <p class="known-for" hidden></p>
       ${photo ? `<p class="credit">${escapeHtml(photo.c || "Wikimedia Commons")}${
           photo.l ? ` · ${escapeHtml(photo.l)}` : ""}</p>` : ""}
-      <ul class="similar-list">
-        ${info.similar
-          .map(
-            (s) => `
-              <li data-id="${s.id}">
-                ${faceHtml(s.id, s.name, "row-thumb", 36)}
-                <span class="row-name">${escapeHtml(s.name)}</span>
-                <span class="row-percent">${s.percent}</span>
-                <button class="row-compare" type="button" data-compare="${s.id}"
-                        data-w="${s.weight}" data-mine="${s.myPhoto}" data-theirs="${s.theirPhoto}"
-                        title="Compare the two closest photos"
-                        aria-label="Compare with ${escapeHtml(s.name)}">⇄</button>
-              </li>`
-          )
-          .join("")}
-      </ul>
+      ${renderSimilar(info)}
     `;
 
     sidebarEl.querySelectorAll<HTMLLIElement>("li[data-id]").forEach((li) => {

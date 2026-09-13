@@ -224,6 +224,14 @@ def _photo_ref(face) -> dict:
     }
 
 
+# What a photo has to clear to be shown, measured over the 19,286 accepted
+# faces in the full collection. Together these keep 97% of people supplied
+# with at least one picture.
+MAX_SOURCE_WIDTH = 2400     # the cap photos.ts uses when asking Commons
+MIN_DISPLAY_PIXELS = 150    # below this a crop renders soft (p10 is 114)
+MIN_DISPLAY_DET_SCORE = 0.75  # a face turned away or occluded scores lower
+MIN_DISPLAY_LIKENESS = 0.60   # and so does one barely recognisable as them
+
 # Above this, two "people" are one gallery under two names rather than two
 # faces that happen to look alike. The strongest genuine pair measured is
 # 0.60 (Marie Antoinette and Mary, Queen of Scots, both from painted
@@ -304,25 +312,41 @@ def build_dataset_from_commons(
 
     # The faces shown for each person, best first.
     #
-    # Ranked by how much of the frame the face fills, not by how closely it
-    # matches the prototype. Every face here has already passed the identity
-    # check, so the question left is which makes a usable picture -- and the
-    # most prototypical face is often a 3%-of-frame head in a red-carpet
-    # group shot, which needs 20x magnification and renders as a blur. Size
-    # is what decides whether a crop is worth showing.
+    # Ranked by how many pixels of face the browser can actually fetch, which
+    # is what decides whether a crop looks sharp. The obvious measure -- how
+    # much of the frame the face fills -- is not the same thing and gets it
+    # backwards often enough to matter: a head filling half of a 400px image
+    # is 200px of face and renders soft, while a tenth of a 4000px image is
+    # twice that and renders crisp.
     #
-    # Capped because the tail is near-duplicate angles costing bytes for
-    # nothing, and it also bounds what the comparison view can offer, which
-    # is the point: a pairing nobody can see is not worth surfacing.
-    def face_area(face):
+    # Then the face has to be worth showing at all. A low detector score is a
+    # face turned away, half out of frame or behind something, and a face
+    # unlike the person's own prototype is the same story from the other
+    # side. Both are useless in a side-by-side comparison, where the whole
+    # point is to see two faces.
+    #
+    # Anyone left with nothing keeps their best photo anyway: a missing
+    # picture is worse than a soft one, and 27 of 965 people have no image
+    # clearing the bar.
+    def display_pixels(face):
+        """Width of the face, in pixels of the largest source we can request."""
         box = face.record["faces"][face.index]["bbox"] if "faces" in face.record else None
         if not box:
             return 0.0
-        width, height = _detected_size(face.record)
-        return ((box[2] - box[0]) / width) * ((box[3] - box[1]) / height)
+        width, _ = _detected_size(face.record)
+        source = min(MAX_SOURCE_WIDTH, face.record.get("width") or width)
+        return ((box[2] - box[0]) / width) * source
+
+    def worth_showing(face, prototype):
+        detail = face.record["faces"][face.index] if "faces" in face.record else {}
+        return (display_pixels(face) >= MIN_DISPLAY_PIXELS
+                and detail.get("det_score", 0.0) >= MIN_DISPLAY_DET_SCORE
+                and float(face.embedding @ prototype) >= MIN_DISPLAY_LIKENESS)
 
     def ranked(name):
-        return sorted(accepted[name], key=lambda f: -face_area(f))[:photos_per_person]
+        usable = [f for f in accepted[name] if worth_showing(f, prototypes[name])]
+        pool = usable or accepted[name]
+        return sorted(pool, key=lambda f: -display_pixels(f))[:photos_per_person]
 
     photos = {str(i): [_photo_ref(f) for f in ranked(n)] for i, n in enumerate(names)}
     by_index = {n: ranked(n) for n in names}

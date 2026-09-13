@@ -511,21 +511,40 @@ body {
     padding: 24px 18px;
   }
   #pair-body {
-    gap: 14px;
+    gap: 10px;
   }
-  .pair-side img {
-    width: 36vw;
-    height: 36vw;
+  /* Sized in vw and kept square. These rules used to target .pair-side img,
+     which stopped existing when the faces became background-cropped spans:
+     the 190px default then survived on a 312px-wide card, and flex squeezed
+     each face to a narrow vertical slice of itself. Qualified with #pair-body
+     so they outrank those 190px defaults, which are defined further down the
+     file and would otherwise win on source order. */
+  #pair-body .pair-face,
+  #pair-body .pair-fallback {
+    width: 28vw;
+    height: 28vw;
+    flex: none;
   }
-  .pair-side figcaption {
-    font-size: 13px;
-    max-width: 36vw;
+  #pair-body .pair-fallback {
+    font-size: 30px;
+  }
+  #pair-body figcaption {
+    font-size: 12px;
+    max-width: 28vw;
+  }
+  #pair-body .pair-credit {
+    font-size: 10px;
+    max-width: 28vw;
   }
   .pair-score strong {
-    font-size: 22px;
+    font-size: 20px;
   }
+  /* Was display:none to save width. That removed the only way back to the
+     map from the comparison, which on a phone is where you end up most. */
   .pair-goto {
-    display: none;
+    padding: 5px 8px;
+    font-size: 11px;
+    white-space: nowrap;
   }
 }
 #hover-preview {
@@ -668,4 +687,25 @@ body {
 #hover-preview {
   width: 200px;
   height: 200px;
+}
+
+/* Group headings in the similar list. Quiet by design: they are there to
+   tell you how much weight to give the rows under them, not to compete
+   with the names. */
+.resemblance-band {
+  margin: 16px 0 6px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-muted);
+}
+.resemblance-band:first-of-type {
+  margin-top: 8px;
+}
+.no-resemblance {
+  margin: 10px 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-muted);
 }

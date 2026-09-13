@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
-import { flyToNode, formatSimilarity, getSidebarData } from "../src/interactions";
+import {
+  flyToNode, formatSimilarity, getSidebarData, groupByResemblance, resemblanceBand,
+} from "../src/interactions";
 import type { GraphData } from "../src/types";
 import type Sigma from "sigma";
 
@@ -99,5 +101,47 @@ describe("getSidebarData", () => {
 
   it("throws for an unknown node id", () => {
     expect(() => getSidebarData(sampleData(), 99)).toThrow();
+  });
+});
+
+describe("resemblanceBand", () => {
+  it("names each band by its score", () => {
+    expect(resemblanceBand(0.6)).toBe("Lookalike");
+    expect(resemblanceBand(0.35)).toBe("Lookalike");
+    expect(resemblanceBand(0.3)).toBe("Looks somewhat alike");
+    expect(resemblanceBand(0.25)).toBe("Looks somewhat alike");
+    expect(resemblanceBand(0.2)).toBe("Far resemblance");
+  });
+
+  it("returns null below the floor", () => {
+    // Half of all pairs sit between 0.14 and 0.18, where the differences are
+    // noise. Showing them as percentages implies a precision that is not there.
+    expect(resemblanceBand(0.179)).toBeNull();
+    expect(resemblanceBand(0.15)).toBeNull();
+    expect(resemblanceBand(0)).toBeNull();
+  });
+});
+
+describe("groupByResemblance", () => {
+  const rows = (...weights: number[]) => weights.map((weight) => ({ weight }));
+
+  it("groups a ranked list into labelled runs, strongest first", () => {
+    const groups = groupByResemblance(rows(0.4, 0.3, 0.26, 0.2));
+    expect(groups.map((g) => g.label)).toEqual([
+      "Lookalike", "Looks somewhat alike", "Far resemblance",
+    ]);
+    expect(groups[1].entries).toHaveLength(2);
+  });
+
+  it("drops everything below the floor", () => {
+    expect(groupByResemblance(rows(0.3, 0.17, 0.16))).toEqual([
+      { label: "Looks somewhat alike", entries: [{ weight: 0.3 }] },
+    ]);
+  });
+
+  it("returns nothing when no pair clears the floor", () => {
+    // 72 of 962 people are in this position, so the caller must handle it
+    // rather than assume every node has someone to show.
+    expect(groupByResemblance(rows(0.17, 0.15))).toEqual([]);
   });
 });

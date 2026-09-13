@@ -67,6 +67,47 @@ export function escapeHtml(value: string): string {
     .replace(/'/g, "&#39;");
 }
 
+/** How a similarity score reads in words.
+ *
+ *  A raw cosine means nothing to a visitor, and the numbers are packed into
+ *  a narrow band -- half of all pairs sit between 0.14 and 0.18 -- so the
+ *  difference between 15% and 17% is noise dressed up as precision. The
+ *  cuts come from the distribution over all 14,430 ranked pairs: 0.3% reach
+ *  0.35, 2.3% reach 0.25, and 20% reach 0.18. Below that there is no
+ *  resemblance worth showing.
+ */
+export const RESEMBLANCE_FLOOR = 0.18;
+
+const BANDS: { min: number; label: string }[] = [
+  { min: 0.35, label: "Lookalike" },
+  { min: 0.25, label: "Looks somewhat alike" },
+  { min: RESEMBLANCE_FLOOR, label: "Far resemblance" },
+];
+
+/** The band a score falls in, or null when it is below the floor. */
+export function resemblanceBand(weight: number): string | null {
+  return BANDS.find((b) => weight >= b.min)?.label ?? null;
+}
+
+/** The ranked list split into labelled groups, weakest group last.
+ *
+ *  Entries below the floor are dropped entirely. 72 of 962 people have
+ *  nothing above it, so callers have to handle an empty result rather than
+ *  assume every node has someone to show. */
+export function groupByResemblance<T extends { weight: number }>(
+  entries: T[]
+): { label: string; entries: T[] }[] {
+  const groups: { label: string; entries: T[] }[] = [];
+  for (const entry of entries) {
+    const label = resemblanceBand(entry.weight);
+    if (!label) continue;
+    const last = groups[groups.length - 1];
+    if (last && last.label === label) last.entries.push(entry);
+    else groups.push({ label, entries: [entry] });
+  }
+  return groups;
+}
+
 export interface SidebarData {
   id: number;
   name: string;
@@ -76,14 +117,16 @@ export interface SidebarData {
    *  `percent`, since the comparison view re-formats it at a larger size.
    *  `myPhoto` / `theirPhoto` index into each person's photos.json entry
    *  and name the two photographs that actually match. */
-  similar: {
-    id: number;
-    name: string;
-    percent: string;
-    weight: number;
-    myPhoto: number;
-    theirPhoto: number;
-  }[];
+  similar: SidebarRow[];
+}
+
+export interface SidebarRow {
+  id: number;
+  name: string;
+  percent: string;
+  weight: number;
+  myPhoto: number;
+  theirPhoto: number;
 }
 
 export function getSidebarData(data: GraphData, nodeId: number): SidebarData {
