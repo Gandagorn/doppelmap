@@ -62,6 +62,11 @@ REQUEST_TIMEOUT = 20          # seconds per HTTP request
 MAX_RETRIES = 5               # image downloads, incl. 429 backoff
 API_RETRIES = 6               # API calls, which hit 429s and need patience
 MAX_IMAGE_BYTES = 25_000_000  # skip absurd originals
+# Download a resized copy, not the original. Commons originals average
+# 3.5 MB and reach 30 MB, which is ~480 GB across a full run and turns a
+# two-hour job into a two-day one. Faces only need enough pixels to clear
+# MIN_FACE_PX, so this loses nothing that matters.
+THUMB_WIDTH = 800
 
 print("output ->", OUT_DIR)
 
@@ -377,6 +382,7 @@ print(f"{sum(len(v) for v in candidates.values())} candidate images "
 
 # ==== CELL 5 - download (threads) + embed (GPU) ============================
 import queue
+import urllib.parse
 
 import cv2
 import numpy as np
@@ -409,6 +415,23 @@ def embed_with_flip(img, face):
     return summed / np.linalg.norm(summed)
 
 
+def thumb_url(rec, width=THUMB_WIDTH):
+    """A resized copy of a Commons image, via Special:FilePath.
+
+    Built from the title, which every cached record already has, so
+    switching to thumbnails costs no re-discovery. Deriving the
+    upload.wikimedia.org /thumb/ path directly does not work: the allowed
+    widths are a per-image bucket list and anything else returns HTTP 400.
+    Special:FilePath negotiates that server-side and redirects to the
+    nearest valid size.
+    """
+    title = rec.get("title", "")
+    if ":" not in title:
+        return rec["original_url"]
+    name = urllib.parse.quote(title.split(":", 1)[1].replace(" ", "_"))
+    return f"https://commons.wikimedia.org/wiki/Special:FilePath/{name}?width={width}"
+
+
 def fetch(job):
     """Download and decode one image. Runs on a download thread.
 
@@ -421,7 +444,8 @@ def fetch(job):
     person, rec = job
     for attempt in range(MAX_RETRIES):
         try:
-            r = session().get(rec["original_url"], timeout=REQUEST_TIMEOUT)
+            url = thumb_url(rec) if attempt < MAX_RETRIES - 1 else rec["original_url"]
+            r = session().get(url, timeout=REQUEST_TIMEOUT)
             if r.status_code == 429:
                 wait = float(r.headers.get("Retry-After") or 0) or min(60, 5 * 2 ** attempt)
                 time.sleep(wait)
@@ -502,14 +526,22 @@ def flush(person):
 work = queue.Queue(maxsize=QUEUE_DEPTH)
 
 
-def producer():
+def producer(out_queue, todo):
+    """Download in parallel, feeding the GPU thread through `out_queue`.
+
+    The queue and job list are arguments, not globals. They used to be
+    looked up globally, so re-running this cell after an interrupt left the
+    previous run's producer alive and writing its stale results into the
+    new run's queue -- which surfaced as a KeyError on a person the new run
+    had already finished and flushed.
+    """
     with ThreadPoolExecutor(max_workers=DOWNLOAD_WORKERS) as pool:
-        for item in pool.map(fetch, jobs):
-            work.put(item)        # blocks when full, throttling to GPU speed
-    work.put(None)
+        for item in pool.map(fetch, todo):
+            out_queue.put(item)   # blocks when full, throttling to GPU speed
+    out_queue.put(None)
 
 
-threading.Thread(target=producer, daemon=True).start()
+threading.Thread(target=producer, args=(work, jobs), daemon=True).start()
 
 with tqdm(total=len(jobs), desc="embed") as bar:
     while True:
@@ -517,6 +549,8 @@ with tqdm(total=len(jobs), desc="embed") as bar:
         if item is None:
             break
         person, rec, img = item
+        if person not in pending:
+            continue              # stale item from an earlier interrupted run
         if img is None:
             stats["failed"] += 1
         else:
