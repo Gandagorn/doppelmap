@@ -44,11 +44,23 @@ async function bootstrap() {
   const pairBody = document.getElementById("pair-body") as HTMLElement;
   const pairClose = document.getElementById("pair-close") as HTMLButtonElement;
 
-  const initialPersonName = new URLSearchParams(location.search).get("person");
+  // How far the camera may pull back. Sigma normalises the layout so ratio 1
+  // frames the entire graph; above that the nodes just recede into nothing.
+  const MAX_ZOOM_OUT_RATIO = 1.5;
+
+  const initialParams = new URLSearchParams(location.search);
+  const initialPersonName = initialParams.get("person");
+  // A shared comparison carries the other person, so the link reopens the
+  // side-by-side rather than dropping the recipient on a sidebar and asking
+  // them to find the pair again.
+  const initialVersusName = initialParams.get("vs");
 
   // Total UI state: which node is selected (sidebar open) and which is
   // hovered (dims everything else). Just a plain object mutated in place —
   // two fields don't need a reducer.
+  // Which pair the comparison card is showing, or null when it is closed.
+  let openPair: { a: number; b: number } | null = null;
+
   const selection: { selectedId: number | null; hoveredId: number | null } = {
     selectedId: null,
     hoveredId: null,
@@ -124,6 +136,56 @@ async function bootstrap() {
                   role="img" aria-label="${escapeHtml(name)}"></span>`;
   }
 
+  /** The link that reproduces what someone is looking at right now. */
+  function shareLink(): string {
+    const nameOf = (id: number) => data.nodes.find((n) => n.id === id)?.name;
+    const params = new URLSearchParams();
+    const subject = openPair ? openPair.a : selection.selectedId;
+    if (subject === null) return location.origin + location.pathname;
+    const name = nameOf(subject);
+    if (!name) return location.origin + location.pathname;
+    params.set("person", name);
+    if (openPair) {
+      const other = nameOf(openPair.b);
+      if (other) params.set("vs", other);
+    }
+    return `${location.origin}${location.pathname}?${params}`;
+  }
+
+  /** Copies a link and says so on the button that was pressed.
+   *
+   *  navigator.clipboard needs a secure context and can still be refused, so
+   *  a hidden textarea + execCommand is kept as the fallback -- a share
+   *  button that silently does nothing is worse than an old API. */
+  async function copyShareLink(button: HTMLButtonElement) {
+    const link = shareLink();
+    let ok = true;
+    try {
+      await navigator.clipboard.writeText(link);
+    } catch {
+      const field = document.createElement("textarea");
+      field.value = link;
+      field.setAttribute("readonly", "");
+      field.style.cssText = "position:fixed;opacity:0";
+      document.body.appendChild(field);
+      field.select();
+      try {
+        ok = document.execCommand("copy");
+      } catch {
+        ok = false;
+      }
+      field.remove();
+    }
+    const previous = button.dataset.label ?? button.textContent ?? "";
+    button.dataset.label = previous;
+    button.textContent = ok ? "Copied" : "Press Ctrl+C";
+    button.classList.add("copied");
+    window.setTimeout(() => {
+      button.textContent = button.dataset.label ?? previous;
+      button.classList.remove("copied");
+    }, 1600);
+  }
+
   function renderSidebar() {
     if (selection.selectedId === null) {
       sidebarEl.hidden = true;
@@ -173,12 +235,17 @@ async function bootstrap() {
     sidebarEl.innerHTML = `
       <div id="sidebar-photo">${faceHtml(info.id, info.name, "face", 160, true)}</div>
       <h2>${escapeHtml(info.name)}</h2>
+      <button class="share-btn" id="share-person" type="button"
+              aria-label="Copy a link to ${escapeHtml(info.name)}">Share</button>
       <p class="attr"></p>
       <p class="known-for" hidden></p>
       ${photo ? `<p class="credit">${escapeHtml(photo.c || "Wikimedia Commons")}${
           photo.l ? ` · ${escapeHtml(photo.l)}` : ""}</p>` : ""}
       ${renderSimilar(info)}
     `;
+
+    sidebarEl.querySelector<HTMLButtonElement>("#share-person")
+      ?.addEventListener("click", (evt) => copyShareLink(evt.currentTarget as HTMLButtonElement));
 
     sidebarEl.querySelectorAll<HTMLLIElement>("li[data-id]").forEach((li) => {
       li.addEventListener("click", () => selectNodeManually(Number(li.dataset.id)));
@@ -361,10 +428,16 @@ async function bootstrap() {
         ${band
           ? `<span class="pair-band" data-band="${band.slug}">${escapeHtml(band.label)}</span>`
           : `<span>similarity</span>`}
+        <button class="share-btn" id="share-pair" type="button"
+                aria-label="Copy a link to this comparison">Share</button>
       </div>
       ${side(b, photoB)}
     `;
+    openPair = { a: idA, b: idB };
     pairView.hidden = false;
+
+    pairBody.querySelector<HTMLButtonElement>("#share-pair")
+      ?.addEventListener("click", (evt) => copyShareLink(evt.currentTarget as HTMLButtonElement));
 
     pairBody.querySelectorAll<HTMLButtonElement>("button[data-goto]").forEach((btn) => {
       btn.addEventListener("click", () => {
@@ -375,6 +448,7 @@ async function bootstrap() {
   }
 
   function closePair() {
+    openPair = null;   // so Share falls back to the person again
     pairView.hidden = true;
     pairBody.innerHTML = "";
   }
@@ -420,6 +494,11 @@ async function bootstrap() {
       labelGridCellSize: 250,
       labelDensity: 0.6,
       labelColor: { color: labelColor(isDark) },
+      // Stop the map shrinking into a speck in the middle of empty space.
+      // Sigma's camera ratio grows as you zoom out, and 1 is the ratio at
+      // which the whole graph fits the viewport, so this allows about half
+      // again as much as that -- breathing room around the cloud, no more.
+      maxCameraRatio: MAX_ZOOM_OUT_RATIO,
     });
 
     renderer.on("clickNode", ({ node }) => {
@@ -580,6 +659,18 @@ async function bootstrap() {
       const match = data.nodes.find((n) => n.name === initialPersonName);
       if (match) {
         selectNode(match.id);
+        // A ?vs= link should land on the comparison itself. The pair's
+        // photo indices live in the similar list, so look the partner up
+        // there rather than defaulting both sides to photo 0.
+        if (initialVersusName) {
+          const other = data.nodes.find((n) => n.name === initialVersusName);
+          const entry = other
+            ? (data.similar[String(match.id)] ?? []).find(([id]) => id === other.id)
+            : undefined;
+          if (other && entry) {
+            showPair(match.id, other.id, entry[1], entry[2] ?? 0, entry[3] ?? 0);
+          }
+        }
         return;
       }
     }

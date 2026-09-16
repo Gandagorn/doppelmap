@@ -214,9 +214,16 @@ body {
 }
 
 @media (max-width: 640px) {
+  /* The button row comes to 396px on a 412px phone -- four pixels over, so
+     it wrapped the About pill onto a third row and ate map height. A
+     slightly tighter gap and pill padding buy back more than enough. */
   #toolbar {
-    padding: 10px;
-    gap: 8px;
+    padding: 10px 8px;
+    gap: 6px;
+  }
+  #toolbar .pill-btn {
+    padding-left: 10px;
+    padding-right: 10px;
   }
   /* Search takes a row of its own; the buttons wrap underneath it. */
   .search-wrap {
@@ -798,4 +805,73 @@ body {
   text-transform: uppercase;
   letter-spacing: 0.05em;
   max-width: 130px;
+}
+
+/* Share, in the sidebar beside a name and on the comparison card. Quiet
+   until wanted: this is an action people look for, not one to advertise. */
+.share-btn {
+  padding: 4px 11px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-panel-solid);
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.4;
+  cursor: pointer;
+}
+.share-btn:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+/* Confirmation has to be visible without moving anything: the label swaps in
+   place, so the button is sized to its widest state and nothing reflows. */
+.share-btn {
+  min-width: 78px;
+  text-align: center;
+}
+.share-btn.copied {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+/* In the sidebar it sits on the name's line rather than below it. */
+#sidebar h2 {
+  display: inline-block;
+  margin-right: 10px;
+  vertical-align: middle;
+}
+#share-person {
+  vertical-align: middle;
+}
+#share-pair {
+  margin-top: 2px;
+}
+
+/* Icon-only toolbar button: same pill as the others, sized for a glyph.
+   Height is set explicitly because an <a> has no intrinsic control height,
+   so it rendered 17px tall next to the 36px pills beside it.
+   It lives in the left-hand group rather than beside About: the right edge
+   of the toolbar sits over the sidebar, and there is only ~39px between the
+   person's photo and the About pill -- not enough for a second button
+   without landing on the photo. */
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 36px;
+  flex: none;
+  padding: 0;
+  color: var(--text-muted);
+  text-decoration: none;
+}
+.icon-btn svg {
+  width: 17px;
+  height: 17px;
+  display: block;
+}
+.icon-btn:hover {
+  color: var(--text);
 }
