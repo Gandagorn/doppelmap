@@ -152,13 +152,48 @@ async function bootstrap() {
     return `${location.origin}${location.pathname}?${params}`;
   }
 
-  /** Copies a link and says so on the button that was pressed.
+  /** Hands the link to the OS share sheet, or copies it if there isn't one.
+   *
+   *  navigator.share is what opens the native "share to WhatsApp / Messages /
+   *  Mail" panel. It exists on phones and on some desktop browsers, needs a
+   *  user gesture and a secure context, and rejects with AbortError when the
+   *  person just closes the sheet -- which is not a failure and must not fall
+   *  through to copying. Everywhere else, copying the link is the behaviour
+   *  people expect from a Share button.
+   */
+  async function shareCurrentView(button: HTMLButtonElement) {
+    const url = shareLink();
+    const title = shareTitle();
+    if (navigator.share) {
+      try {
+        await navigator.share({ title, text: title, url });
+        return;
+      } catch (err) {
+        if ((err as DOMException)?.name === "AbortError") return;
+        // Anything else (no handler, permission denied): fall through to copy.
+      }
+    }
+    await copyShareLink(button, url);
+  }
+
+  /** What the share sheet announces, so the preview is not a bare URL. */
+  function shareTitle(): string {
+    const nameOf = (id: number) => data.nodes.find((n) => n.id === id)?.name;
+    if (openPair) {
+      const a = nameOf(openPair.a);
+      const b = nameOf(openPair.b);
+      if (a && b) return `${a} and ${b} on Doppelmap`;
+    }
+    const name = selection.selectedId === null ? null : nameOf(selection.selectedId);
+    return name ? `${name} on Doppelmap` : "Doppelmap";
+  }
+
+  /** Clipboard fallback, reporting back on the button that was pressed.
    *
    *  navigator.clipboard needs a secure context and can still be refused, so
-   *  a hidden textarea + execCommand is kept as the fallback -- a share
+   *  a hidden textarea + execCommand is kept as the last resort -- a share
    *  button that silently does nothing is worse than an old API. */
-  async function copyShareLink(button: HTMLButtonElement) {
-    const link = shareLink();
+  async function copyShareLink(button: HTMLButtonElement, link = shareLink()) {
     let ok = true;
     try {
       await navigator.clipboard.writeText(link);
@@ -245,7 +280,7 @@ async function bootstrap() {
     `;
 
     sidebarEl.querySelector<HTMLButtonElement>("#share-person")
-      ?.addEventListener("click", (evt) => copyShareLink(evt.currentTarget as HTMLButtonElement));
+      ?.addEventListener("click", (evt) => shareCurrentView(evt.currentTarget as HTMLButtonElement));
 
     sidebarEl.querySelectorAll<HTMLLIElement>("li[data-id]").forEach((li) => {
       li.addEventListener("click", () => selectNodeManually(Number(li.dataset.id)));
@@ -437,7 +472,7 @@ async function bootstrap() {
     pairView.hidden = false;
 
     pairBody.querySelector<HTMLButtonElement>("#share-pair")
-      ?.addEventListener("click", (evt) => copyShareLink(evt.currentTarget as HTMLButtonElement));
+      ?.addEventListener("click", (evt) => shareCurrentView(evt.currentTarget as HTMLButtonElement));
 
     pairBody.querySelectorAll<HTMLButtonElement>("button[data-goto]").forEach((btn) => {
       btn.addEventListener("click", () => {

@@ -872,6 +872,37 @@ body {
   width: 17px;
   height: 17px;
   display: block;
+  flex: none;
+}
+/* The label unrolls on hover and on keyboard focus, so the button says what
+   it does without costing a pill's width all the time. Animating max-width
+   rather than toggling display keeps it from snapping the toolbar around,
+   and the text stays in the DOM so screen readers always read it. */
+.icon-label {
+  max-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  opacity: 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+  transition: max-width 0.22s ease, opacity 0.18s ease, margin-left 0.22s ease;
+}
+.icon-btn:hover .icon-label,
+.icon-btn:focus-visible .icon-label {
+  max-width: 120px;
+  margin-left: 7px;
+  opacity: 1;
+}
+/* Width has to give, or the label has nowhere to unroll into. */
+.icon-btn {
+  width: auto;
+  min-width: 38px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .icon-label {
+    transition: none;
+  }
 }
 .icon-btn:hover {
   color: var(--text);
