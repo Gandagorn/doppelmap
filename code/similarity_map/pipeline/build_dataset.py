@@ -254,11 +254,21 @@ def build_dataset_from_commons(
     separate file because the comparison view is opened rarely and it would
     otherwise be dead weight in every first page load.
     """
+    from .excluded import EXCLUDED
     from .commons_embeddings import (
         best_matching_faces, load_commons_people, person_prototype,
     )
 
     people = load_commons_people(directory)
+
+    # Galleries that are confidently, consistently the wrong person. Nothing
+    # measurable separates these from a correct one -- the images agree with
+    # each other, they are simply of somebody else -- so they are listed by
+    # hand in pipeline/excluded.py with the reason.
+    for name in sorted(set(people) & set(EXCLUDED)):
+        print(f"excluding {name}: {EXCLUDED[name]}")
+        people.pop(name)
+
     prototypes, accepted = {}, {}
     for name, images in sorted(people.items()):
         result = person_prototype(name, images)

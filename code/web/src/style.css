@@ -389,14 +389,10 @@ body {
   font: inherit;
   font-size: 13px;
   cursor: pointer;
-  /* Revealed on row hover on desktop to keep the list calm; always shown
-     on touch, where there is no hover to reveal it. */
-  opacity: 0;
-  transition: opacity 0.12s ease;
-}
-.similar-list li:hover .row-compare,
-.row-compare:focus-visible {
-  opacity: 1;
+  /* Always visible. It used to fade in on row hover to keep the list calm,
+     but comparing two faces is the point of the list, and a control you
+     cannot see is a control most people never find. */
+  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
 }
 .row-compare:hover {
   background: var(--accent);
@@ -404,9 +400,6 @@ body {
   color: #fff;
 }
 @media (hover: none) {
-  .row-compare {
-    opacity: 1;
-  }
 }
 
 #pair-view {

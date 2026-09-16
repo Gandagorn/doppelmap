@@ -112,3 +112,29 @@ def test_build_dataset_from_embeddings_drops_thin_prototypes(tmp_path):
 
     assert graphs["all"]["meta"]["count"] == 10
     assert "Thin Person" not in {n["name"] for n in graphs["all"]["nodes"]}
+
+
+def test_excluded_people_are_kept_off_the_map():
+    """A named exclusion never reaches the graph, however clean its gallery.
+
+    The list exists precisely because the data looks fine: a gallery of a
+    Renaissance saint is internally consistent, so no consensus or
+    duplicate check can reject it. Guard the shape of the list rather than
+    the specific names, which will change.
+    """
+    from pathlib import Path
+
+    import pytest
+
+    from similarity_map.pipeline.excluded import EXCLUDED
+    from similarity_map.pipeline.commons_embeddings import load_commons_people
+
+    assert EXCLUDED, "the list should not be silently empty"
+    for name, reason in EXCLUDED.items():
+        assert reason.strip(), f"{name} is excluded without a reason"
+
+    faces = Path(__file__).resolve().parents[3] / "data" / "faces"
+    if not faces.is_dir():
+        pytest.skip("no collected faces available")
+    people = load_commons_people(faces)
+    assert set(people) & set(EXCLUDED), "no excluded person is present to exclude"

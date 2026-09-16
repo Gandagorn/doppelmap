@@ -89,3 +89,13 @@ to real people, and depends on someone having usable freely-licensed
 photographs on Commons. Plenty of well-known people have neither.
 
 All images are CC-licensed or public domain and credited on the photo itself.
+
+## Licence
+
+The code is [MIT](LICENSE).
+
+The photographs are not covered by it. Each one keeps the licence it carries
+on Wikimedia Commons — CC BY-SA, CC0 or public domain — and is credited to
+its photographer in the sidebar and on the comparison card. Nothing is
+rehosted: images are requested from Commons at display time, and the
+repository stores only a filename, a face box and the credit line.
