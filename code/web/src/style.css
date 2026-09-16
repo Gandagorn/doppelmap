@@ -50,6 +50,7 @@ body {
 #about-panel,
 #dashboard-toggle,
 #dashboard,
+#github-link,
 #sidebar {
   background: var(--bg-panel);
   backdrop-filter: blur(14px);
