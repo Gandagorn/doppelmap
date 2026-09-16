@@ -87,17 +87,29 @@ def _faces_of(record: dict) -> list[list[float]]:
 
 
 def load_commons_people(directory: Path) -> dict[str, list[dict]]:
-    """Reads every *.json in `directory`; the filename is the person.
+    """Reads every *.json in `directory`, one person per file.
+
+    The name comes from inside the file, not from the filename. Apostrophes
+    do not survive the trip to a filename -- "Kevin O'Leary" is stored as
+    "Kevin O_Leary.json" -- and the stem was being shown to visitors
+    verbatim. Ten people were named with an underscore on the live site.
+
+    Two files can now resolve to one person (Commons returns some under both
+    spellings), so the fuller gallery wins rather than whichever sorted last.
 
     Accepts either a bare list of image records or a {"name", "images"}
     object, which is what the newer collector writes.
     """
-    people = {}
+    people: dict[str, list[dict]] = {}
     for path in sorted(Path(directory).glob("*.json")):
         payload = json.loads(path.read_text(encoding="utf-8"))
-        records = payload.get("images", []) if isinstance(payload, dict) else payload
-        if records:
-            people[path.stem] = records
+        if isinstance(payload, dict):
+            records = payload.get("images", [])
+            name = payload.get("name") or path.stem
+        else:
+            records, name = payload, path.stem
+        if records and len(records) > len(people.get(name, [])):
+            people[name] = records
     return people
 
 

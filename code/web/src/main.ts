@@ -7,7 +7,9 @@ import {
   flyToNode, getSidebarData, formatSimilarity, escapeHtml, groupByResemblance,
   resemblanceBand,
 } from "./interactions";
-import { DIM_NODE_COLOR, FADED_EDGE_COLOR, SELECTED_NODE_COLOR } from "./theme";
+import {
+  DIM_NODE_COLOR, fadedEdgeColor, labelColor, SELECTED_NODE_COLOR,
+} from "./theme";
 import { fetchWikipediaInfo } from "./wikipediaPhoto";
 import { faceCropStyle, loadPhotos, photoUrl, photosFor } from "./photos";
 import type { GraphData, GraphNode, PhotoRef } from "./types";
@@ -417,6 +419,7 @@ async function bootstrap() {
       labelRenderedSizeThreshold: 0,
       labelGridCellSize: 250,
       labelDensity: 0.6,
+      labelColor: { color: labelColor(isDark) },
     });
 
     renderer.on("clickNode", ({ node }) => {
@@ -451,8 +454,11 @@ async function bootstrap() {
         const isHighlighted = nodeId === highlightKey;
         const isNeighbor = graph.areNeighbors(nodeId, highlightKey);
         if (!isHighlighted && !isNeighbor) {
+          // Dimmed, but it keeps its name. Blanking these left the map with
+          // one or two labels and several hundred anonymous dots, since
+          // startup always selects somebody. Sigma's label grid still decides
+          // how many actually fit.
           display.color = DIM_NODE_COLOR;
-          display.label = "";
         }
       }
 
@@ -477,7 +483,7 @@ async function bootstrap() {
           // Dimmed, not hidden. Hiding every non-incident edge blanked the
           // entire map whenever anything was selected -- and since startup
           // auto-selects someone, that was the first thing anyone saw.
-          display.color = FADED_EDGE_COLOR;
+          display.color = fadedEdgeColor(isDark);
         }
       }
       return display;

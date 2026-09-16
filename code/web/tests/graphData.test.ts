@@ -55,15 +55,38 @@ describe("buildGraphology", () => {
     expect(graph.getNodeAttribute("0", "color")).toBe("#3987e5");
   });
 
-  it("draws the stronger edge more opaque and thicker than the weaker one", () => {
+  it("draws the stronger edge with more contrast and thicker than the weaker one", () => {
+    // Edge colours are opaque, mixed into the theme background rather than
+    // drawn with alpha: Sigma renders them in WebGL against a transparent
+    // canvas, where ~2,100 translucent edges stack until a pixel saturates.
+    // So "more prominent" is measured as further from the background, which
+    // in the light theme means darker.
     const graph = buildGraphology(sampleData(), false);
     const strong = graph.getEdgeAttribute("0", "1", "color") as string; // weight 0.9
     const weak = graph.getEdgeAttribute("0", "2", "color") as string; // weight 0.5
-    const alphaOf = (rgba: string) => Number(rgba.slice(rgba.lastIndexOf(",") + 1, -1));
-    expect(alphaOf(strong)).toBeGreaterThan(alphaOf(weak));
+    const luminance = (rgb: string) => {
+      const [r, g, b] = rgb.match(/\d+/g)!.map(Number);
+      return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    };
+    expect(strong).not.toContain("rgba");
+    expect(luminance(strong)).toBeLessThan(luminance(weak));
     expect(graph.getEdgeAttribute("0", "1", "size")).toBeGreaterThan(
       graph.getEdgeAttribute("0", "2", "size") as number
     );
+  });
+
+  it("keeps a dark-theme edge lighter than its background, not darker", () => {
+    // The mix runs toward the accent from whichever background the theme
+    // paints, so the same code has to brighten on dark and darken on light.
+    const dark = buildGraphology(sampleData(), true);
+    const light = buildGraphology(sampleData(), false);
+    const lum = (g: typeof dark) => {
+      const [r, gr, b] = (g.getEdgeAttribute("0", "1", "color") as string)
+        .match(/\d+/g)!.map(Number);
+      return 0.2126 * r + 0.7152 * gr + 0.0722 * b;
+    };
+    expect(lum(dark)).toBeLessThan(128);
+    expect(lum(light)).toBeGreaterThan(128);
   });
 
   it("sizes nodes smaller than the previous formula, still scaling with degree", () => {
