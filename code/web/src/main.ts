@@ -488,9 +488,16 @@ async function bootstrap() {
     pairBody.innerHTML = "";
   }
 
+  // How many pairs the Top Pairs panel lists. The panel scrolls, so this is
+  // about how far down the ranking is still worth reading rather than about
+  // fitting the screen.
+  const TOP_PAIRS_SHOWN = 100;
+
   function renderDashboard() {
     const nodesById = new Map(data.nodes.map((n) => [n.id, n]));
-    const topPairs = [...data.edges].sort((a, b) => b[2] - a[2]).slice(0, 50);
+    const topPairs = [...data.edges]
+      .sort((a, b) => b[2] - a[2])
+      .slice(0, TOP_PAIRS_SHOWN);
     dashboardListEl.innerHTML = topPairs
       .map(([a, b, w]) => {
         const nameA = nodesById.get(a)?.name ?? "Unknown";
