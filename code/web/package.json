@@ -1,0 +1,25 @@
+{
+  "name": "doppelmap-web",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@sigma/node-image": "^3.0.0",
+    "@supabase/supabase-js": "^2.116.0",
+    "graphology": "^0.25.4",
+    "graphology-types": "^0.24.7",
+    "sigma": "^3.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.4",
+    "vite": "^5.4.0",
+    "vitest": "^2.0.5"
+  }
+}
