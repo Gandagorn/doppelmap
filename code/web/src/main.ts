@@ -34,7 +34,39 @@ const PHOTOS_FILE = "photos.json";
  *  a 2.5x screen; above that the warp costs more than the sharpness is
  *  worth, since the source thumbnails are not that detailed either. */
 const BLEND_PX = 300;
-const BLEND_REVEAL_MS = 1900;
+/** The morph's timeline: where it stops and how long it rests there.
+ *
+ *  It opens on the blend and keeps coming back to it, because that is the
+ *  claim the card is making; the two detours exist to show what the blend
+ *  is made of. The long rest in the middle is what gives a reader time to
+ *  look at the combined face rather than catch it in passing. */
+const BLEND_STOPS = [
+  { at: 0.5, hold: 2000 },
+  { at: 0, hold: 700 },
+  { at: 0.5, hold: 2000 },
+  { at: 1, hold: 700 },
+];
+const BLEND_TRAVEL_MS = 1300;
+
+/** The timeline flattened into rests and journeys, built once. */
+const BLEND_TIMELINE = BLEND_STOPS.flatMap((stop, i) => [
+  { ms: stop.hold, from: stop.at, to: stop.at },
+  { ms: BLEND_TRAVEL_MS, from: stop.at, to: BLEND_STOPS[(i + 1) % BLEND_STOPS.length].at },
+]);
+const BLEND_PERIOD_MS = BLEND_TIMELINE.reduce((total, leg) => total + leg.ms, 0);
+
+/** Where the morph should be, this far into the cycle. */
+function blendPosition(elapsed: number): number {
+  let at = elapsed % BLEND_PERIOD_MS;
+  for (const leg of BLEND_TIMELINE) {
+    if (at < leg.ms) {
+      const k = leg.ms ? at / leg.ms : 1;
+      return leg.from + (leg.to - leg.from) * (k * k * (3 - 2 * k));
+    }
+    at -= leg.ms;
+  }
+  return 0.5;
+}
 
 const SHARE_GLYPH = `<svg viewBox="0 0 24 24" width="13" height="13"
     fill="none" stroke="currentColor" stroke-width="2"
@@ -689,16 +721,16 @@ async function bootstrap() {
     // appears.
     const band = resemblanceBand(weight);
 
+    // The placeholder shows no photograph. It used to crossfade the two
+    // faces, which is the thing the blend improves on -- so for the seconds
+    // before the real one arrives the card argued against itself. Two shapes
+    // drifting together say what is coming without pretending to be it.
     const blendable = photosFor(a.id)?.[photoA] && photosFor(b.id)?.[photoB];
     const blend = blendable
-      ? `<div class="pair-blend auto">
-           <div class="blend-stack">
-             <span class="blend-face" style="${faceCropStyle(
-               photosFor(a.id)![photoA] ?? photosFor(a.id)![0], 0.75, 150)}"></span>
-             <span class="blend-face blend-top" id="blend-top" style="${faceCropStyle(
-               photosFor(b.id)![photoB] ?? photosFor(b.id)![0], 0.75, 150)}"></span>
+      ? `<div class="pair-blend">
+           <div class="blend-stack" aria-busy="true">
+             <div class="blend-loading" aria-hidden="true"><i></i><i></i></div>
            </div>
-           <div class="blend-caption"><span>blend</span></div>
          </div>`
       : "";
 
@@ -835,30 +867,38 @@ async function bootstrap() {
         canvas.setAttribute(
           "aria-label", `${a.name} and ${b.name} blended into one face`);
         stack.append(canvas);
-        slot.classList.remove("auto");
+        stack.removeAttribute("aria-busy");
         slot.classList.add("ready");
-        revealBlend(blend, token);
+        animateBlend(blend, token);
       })
       .catch(() => { /* the crossfade is the fallback, so nothing to undo */ });
   }
 
-  /** Run the morph once on arrival: first face, second face, then settle.
+  /** Keep the morph running, slowly, between the two faces.
    *
-   *  Dropping straight to the blend hides what it is -- a reader sees a third
-   *  portrait and has no reason to believe it came from the other two. One
-   *  pass through both faces shows the derivation, and the resting state is
-   *  still the blend. */
-  function revealBlend(blend: Blend, token: number) {
-    if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+   *  A single pass and then a still blend read as a glitch: the card
+   *  flickered once and settled, and anyone who looked away missed what it
+   *  had shown. Travelling back and forth makes the derivation legible at
+   *  any moment -- whenever a reader looks, the face is on its way from one
+   *  of them to the other.
+   *
+   *  BLEND_STOPS sets where it rests and for how long.
+   */
+  function animateBlend(blend: Blend, token: number) {
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      blend.render(0.5);
+      return;
+    }
     const started = performance.now();
+    let drawn = -1;
     const step = (now: number) => {
       if (token !== blendToken) return;
-      const p = Math.min(1, (now - started) / BLEND_REVEAL_MS);
-      const eased = p * p * (3 - 2 * p);
-      // 0 -> 1 over the first two thirds, then back to the midpoint.
-      blend.render(eased < 0.66 ? eased / 0.66 : 1 - (eased - 0.66) / 0.34 * 0.5);
-      if (p < 1) requestAnimationFrame(step);
-      else blend.render(0.5);
+      requestAnimationFrame(step);
+      // Redrawing is 436 clipped triangles, so it runs at about 30fps
+      // rather than 60, and not at all behind a hidden tab.
+      if (document.hidden || now - drawn < 32) return;
+      drawn = now;
+      blend.render(blendPosition(now - started));
     };
     requestAnimationFrame(step);
   }

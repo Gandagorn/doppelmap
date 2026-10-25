@@ -1475,19 +1475,14 @@ body {
   position: relative;
   width: 164px;
   height: 164px;
-  border-radius: var(--radius);
-  overflow: hidden;
-  box-shadow: var(--shadow), 0 0 0 1px rgba(255, 255, 255, 0.08);
+  /* No frame, in either state. The blend carries its own soft-edged alpha
+     and the loader is a pair of soft discs, so a box with a shadow would
+     put back the hard square both of them exist to avoid -- and it used to
+     appear while loading and then disappear on arrival. */
 }
-.blend-face {
-  position: absolute;
-  inset: 0;
-  display: block;
-}
-.blend-top { opacity: 0.5; }
 /* The real blend, once the landmark model has arrived. It carries its own
    soft-edged alpha, so the card background shows through rather than a grey
-   square, and it covers the two stacked photographs it replaces. */
+   square, and it covers the loader it replaces. */
 .blend-canvas {
   position: absolute;
   inset: 0;
@@ -1495,42 +1490,52 @@ body {
   height: 100%;
   display: block;
 }
-.pair-blend.ready .blend-face { opacity: 0; }
-.pair-blend.ready .blend-stack {
-  /* The vignette has no edges to clip or shadow; a box around it would
-     reintroduce the square the alpha exists to get rid of. */
-  overflow: visible;
-  box-shadow: none;
+.pair-blend.ready .blend-loading { opacity: 0; }
+.blend-loading,
+.blend-canvas { transition: opacity 0.45s ease; }
+
+/* Waiting for the landmark model: two soft shapes drifting into one and
+   apart again. No photograph -- the point of the slot is a face built from
+   both, and showing either one early is a different claim. */
+.blend-loading {
+  position: absolute;
+  inset: 0;
 }
-.blend-face,
-.blend-canvas { transition: opacity 0.35s ease; }
+.blend-loading i {
+  position: absolute;
+  top: 30%;
+  width: 40%;
+  height: 40%;
+  border-radius: 50%;
+  background: radial-gradient(circle,
+    color-mix(in srgb, var(--accent) 60%, transparent) 0%,
+    color-mix(in srgb, var(--accent) 44%, transparent) 46%,
+    color-mix(in srgb, var(--accent) 6%, transparent) 78%,
+    transparent 88%);
+  animation: blend-drift 2.4s ease-in-out infinite alternate;
+}
+.blend-loading i:first-child { left: 10%; }
+.blend-loading i:last-child {
+  right: 10%;
+  animation-name: blend-drift-back;
+}
+@keyframes blend-drift {
+  from { transform: translateX(0) scale(0.94); }
+  to { transform: translateX(50%) scale(1.05); }
+}
+@keyframes blend-drift-back {
+  from { transform: translateX(0) scale(0.94); }
+  to { transform: translateX(-50%) scale(1.05); }
+}
 @media (prefers-reduced-motion: reduce) {
-  .blend-face,
+  .blend-loading,
   .blend-canvas { transition: none; }
-}
-/* Cycles between the two faces on its own. */
-.pair-blend.auto .blend-top {
-  animation: blend-cycle 5s ease-in-out infinite alternate;
-}
-@keyframes blend-cycle {
-  from { opacity: 0.06; }
-  to { opacity: 0.94; }
-}
-@media (prefers-reduced-motion: reduce) {
-  .pair-blend.auto .blend-top { animation: none; }
-}
-.blend-caption {
-  display: flex;
-  justify-content: center;
-  width: 164px;
-  font-size: 10.5px;
-  color: var(--text-muted);
-  gap: 8px;
-}
-.blend-caption span:nth-child(2) {
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  opacity: 0.75;
+  /* i:last-child sets animation-name, which outranks a plain `i` reset --
+     so the stop has to be written at the same specificity. */
+  .blend-loading i,
+  .blend-loading i:last-child { animation: none; }
+  .blend-loading i { transform: translateX(26%) scale(1); }
+  .blend-loading i:last-child { transform: translateX(-26%) scale(1); }
 }
 @media (max-width: 760px) {
   /* Too narrow for three columns: the blend goes under the pair. */
