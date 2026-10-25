@@ -34,28 +34,33 @@ const PHOTOS_FILE = "photos.json";
  *  a 2.5x screen; above that the warp costs more than the sharpness is
  *  worth, since the source thumbnails are not that detailed either. */
 const BLEND_PX = 300;
-/** The morph's timeline: where it stops and how long it rests there.
+/** Where the morph travels, and how long it rests on arrival.
  *
- *  It opens on the blend and keeps coming back to it, because that is the
- *  claim the card is making; the two detours exist to show what the blend
- *  is made of. The long rest in the middle is what gives a reader time to
- *  look at the combined face rather than catch it in passing. */
-const BLEND_STOPS = [
-  { at: 0.5, hold: 2000 },
-  { at: 0, hold: 700 },
-  { at: 0.5, hold: 2000 },
-  { at: 1, hold: 700 },
+ *  It opens on the person whose card this is, sweeps straight through the
+ *  blend to the other face, comes back to the blend and waits there, then
+ *  returns to the start. One lap, with the pause at the end of it.
+ *
+ *  Resting on the blend rather than on either face is the whole point: that
+ *  is the frame the card is arguing for, and the lap on either side of it
+ *  is what shows the reader where it came from. */
+const BLEND_START = 0;
+const BLEND_PATH = [
+  { to: 1, travel: 2600, hold: 0 },        // focused face, through the blend, to the other
+  { to: 0.5, travel: 1300, hold: 2000 },   // back to the blend, and wait
+  { to: 0, travel: 1300, hold: 0 },        // home, and round again
 ];
-const BLEND_TRAVEL_MS = 1300;
 
-/** The timeline flattened into rests and journeys, built once. */
-const BLEND_TIMELINE = BLEND_STOPS.flatMap((stop, i) => [
-  { ms: stop.hold, from: stop.at, to: stop.at },
-  { ms: BLEND_TRAVEL_MS, from: stop.at, to: BLEND_STOPS[(i + 1) % BLEND_STOPS.length].at },
-]);
+/** The path flattened into journeys and rests, built once. */
+const BLEND_TIMELINE = BLEND_PATH.reduce<{ ms: number; from: number; to: number }[]>(
+  (legs, leg, i) => {
+    const from = i === 0 ? BLEND_START : BLEND_PATH[i - 1].to;
+    legs.push({ ms: leg.travel, from, to: leg.to });
+    if (leg.hold) legs.push({ ms: leg.hold, from: leg.to, to: leg.to });
+    return legs;
+  }, []);
 const BLEND_PERIOD_MS = BLEND_TIMELINE.reduce((total, leg) => total + leg.ms, 0);
 
-/** Where the morph should be, this far into the cycle. */
+/** Where the morph should be, this far into the lap. */
 function blendPosition(elapsed: number): number {
   let at = elapsed % BLEND_PERIOD_MS;
   for (const leg of BLEND_TIMELINE) {
@@ -861,7 +866,7 @@ async function bootstrap() {
     prepareBlend(refA, refB, BLEND_PX)
       .then((blend) => {
         if (token !== blendToken) return;
-        const canvas = blend.render(0.5);
+        const canvas = blend.render(BLEND_START);
         canvas.className = "blend-canvas";
         canvas.setAttribute("role", "img");
         canvas.setAttribute(
@@ -882,7 +887,7 @@ async function bootstrap() {
    *  any moment -- whenever a reader looks, the face is on its way from one
    *  of them to the other.
    *
-   *  BLEND_STOPS sets where it rests and for how long.
+   *  BLEND_PATH sets where it goes and where it waits.
    */
   function animateBlend(blend: Blend, token: number) {
     if (matchMedia("(prefers-reduced-motion: reduce)").matches) {
@@ -1073,15 +1078,16 @@ async function bootstrap() {
         }
       }
 
-      // A face cannot be dimmed -- the photograph covers whatever colour is
-      // under it -- so everyone outside a selection drops back to a dot,
-      // leaving the chosen person and their matches as the only faces. Only
-      // for a deliberate selection: doing it on hover wipes the map as the
-      // pointer crosses it.
+      // Selecting someone used to blank every other face back to a dot, on
+      // the reasoning that a photograph cannot be dimmed by a colour. It
+      // can't -- but the cure was worse. The site opens on a comparison,
+      // which selects a node, so the first thing a visitor saw was a map of
+      // grey circles, and it stayed grey until they happened to click empty
+      // space. Focus is carried by the selected node's own colour and size,
+      // by the edges, and by whose names are labelled; the faces stay.
       const focusKey = selection.selectedId === null ? null : String(selection.selectedId);
       if (focusKey !== null && nodeId !== focusKey && !graph.areNeighbors(nodeId, focusKey)) {
         display.color = DIM_NODE_COLOR;
-        display.image = undefined;
         display.label = "";
       }
 
