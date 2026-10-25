@@ -1473,8 +1473,8 @@ body {
 }
 .blend-stack {
   position: relative;
-  width: 118px;
-  height: 118px;
+  width: 164px;
+  height: 164px;
   border-radius: var(--radius);
   overflow: hidden;
   box-shadow: var(--shadow), 0 0 0 1px rgba(255, 255, 255, 0.08);
@@ -1485,6 +1485,29 @@ body {
   display: block;
 }
 .blend-top { opacity: 0.5; }
+/* The real blend, once the landmark model has arrived. It carries its own
+   soft-edged alpha, so the card background shows through rather than a grey
+   square, and it covers the two stacked photographs it replaces. */
+.blend-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.pair-blend.ready .blend-face { opacity: 0; }
+.pair-blend.ready .blend-stack {
+  /* The vignette has no edges to clip or shadow; a box around it would
+     reintroduce the square the alpha exists to get rid of. */
+  overflow: visible;
+  box-shadow: none;
+}
+.blend-face,
+.blend-canvas { transition: opacity 0.35s ease; }
+@media (prefers-reduced-motion: reduce) {
+  .blend-face,
+  .blend-canvas { transition: none; }
+}
 /* Cycles between the two faces on its own. */
 .pair-blend.auto .blend-top {
   animation: blend-cycle 5s ease-in-out infinite alternate;
@@ -1499,7 +1522,7 @@ body {
 .blend-caption {
   display: flex;
   justify-content: center;
-  width: 118px;
+  width: 164px;
   font-size: 10.5px;
   color: var(--text-muted);
   gap: 8px;

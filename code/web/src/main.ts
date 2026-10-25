@@ -7,6 +7,7 @@ import { edgeColorForStrength } from "./theme";
 import { getDisplayMode } from "./sigmaSetup";
 import { searchNames } from "./search";
 import type { SidebarRow } from "./interactions";
+import { blendSupported, prepareBlend, type Blend } from "./blend";
 import {
   flyToNode, getSidebarData, formatSimilarity, escapeHtml, groupByResemblance,
   rarityNote, resemblanceBand,
@@ -29,6 +30,12 @@ const PHOTOS_FILE = "photos.json";
 
 // Inline SVG rather than an emoji: an emoji renders differently on every platform and
 // brings its own colour, which a quiet button should not.
+/** Pixels the blend is rendered at. The slot is 118 CSS px, so this covers
+ *  a 2.5x screen; above that the warp costs more than the sharpness is
+ *  worth, since the source thumbnails are not that detailed either. */
+const BLEND_PX = 300;
+const BLEND_REVEAL_MS = 1900;
+
 const SHARE_GLYPH = `<svg viewBox="0 0 24 24" width="13" height="13"
     fill="none" stroke="currentColor" stroke-width="2"
     stroke-linecap="round" stroke-linejoin="round">
@@ -161,6 +168,9 @@ async function bootstrap() {
   // list the person was actually reading -- the Top Pairs table, or one person's own
   // matches -- rather than some global order they never saw.
   let pairSeries: { items: PairRef[]; index: number } | null = null;
+  /** Bumped whenever the open comparison changes, so a blend that is still
+   *  downloading when the reader pages on is thrown away rather than drawn. */
+  let blendToken = 0;
   // Resolves when photos.json has arrived.
   let photosReady: Promise<unknown> = Promise.resolve();
   // Whether the map draws faces.
@@ -722,6 +732,7 @@ async function bootstrap() {
     openPairPhotos = { a: photoA, b: photoB };
     renderPairNav();
     pairView.hidden = false;
+    startBlend(a, b, photoA, photoB);
 
     for (const mark of pairBody.querySelectorAll<HTMLButtonElement>(".credit-btn")) {
       mark.addEventListener("click", (evt) => {
@@ -791,7 +802,69 @@ async function bootstrap() {
     }
   }
 
+  /** Replace the crossfade in the middle of the card with a real blend.
+   *
+   *  The two stacked faces the card ships with are a stand-in: they cycle
+   *  opacity, which overlays two faces without moving either, so for most of
+   *  the cycle it is a double exposure. The real thing warps both onto the
+   *  shape halfway between them, which needs a 15MB landmark model and two
+   *  full-size photographs. That is far too much to load with the map, so it
+   *  is fetched here, on the first comparison anyone opens, and the crossfade
+   *  covers the wait.
+   *
+   *  Everything is best-effort. An old browser, a blocked fetch or a face the
+   *  model cannot find all leave the crossfade in place rather than an empty
+   *  square.
+   */
+  function startBlend(a: GraphNode, b: GraphNode, photoA: number, photoB: number) {
+    const slot = pairBody.querySelector<HTMLElement>(".pair-blend");
+    const stack = pairBody.querySelector<HTMLElement>(".blend-stack");
+    const refA = photosFor(a.id)?.[photoA] ?? photosFor(a.id)?.[0];
+    const refB = photosFor(b.id)?.[photoB] ?? photosFor(b.id)?.[0];
+    if (!slot || !stack || !refA || !refB || !blendSupported()) return;
+
+    // Paging to the next pair, or closing, invalidates a blend still in
+    // flight -- otherwise a slow one lands on somebody else's card.
+    const token = ++blendToken;
+    prepareBlend(refA, refB, BLEND_PX)
+      .then((blend) => {
+        if (token !== blendToken) return;
+        const canvas = blend.render(0.5);
+        canvas.className = "blend-canvas";
+        canvas.setAttribute("role", "img");
+        canvas.setAttribute(
+          "aria-label", `${a.name} and ${b.name} blended into one face`);
+        stack.append(canvas);
+        slot.classList.remove("auto");
+        slot.classList.add("ready");
+        revealBlend(blend, token);
+      })
+      .catch(() => { /* the crossfade is the fallback, so nothing to undo */ });
+  }
+
+  /** Run the morph once on arrival: first face, second face, then settle.
+   *
+   *  Dropping straight to the blend hides what it is -- a reader sees a third
+   *  portrait and has no reason to believe it came from the other two. One
+   *  pass through both faces shows the derivation, and the resting state is
+   *  still the blend. */
+  function revealBlend(blend: Blend, token: number) {
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const started = performance.now();
+    const step = (now: number) => {
+      if (token !== blendToken) return;
+      const p = Math.min(1, (now - started) / BLEND_REVEAL_MS);
+      const eased = p * p * (3 - 2 * p);
+      // 0 -> 1 over the first two thirds, then back to the midpoint.
+      blend.render(eased < 0.66 ? eased / 0.66 : 1 - (eased - 0.66) / 0.34 * 0.5);
+      if (p < 1) requestAnimationFrame(step);
+      else blend.render(0.5);
+    };
+    requestAnimationFrame(step);
+  }
+
   function closePair() {
+    blendToken++;
     openPair = null;   // so Share falls back to the person again
     updateUrl();       // and the address bar drops ?vs= with it
     pairSeries = null;

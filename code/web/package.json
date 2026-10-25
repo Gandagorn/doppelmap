@@ -4,17 +4,19 @@
   "version": "0.0.1",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc --noEmit && vite build",
+    "dev": "npm run copy-ort && vite",
+    "build": "npm run copy-ort && tsc --noEmit && vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "copy-ort": "node scripts/copy-ort.mjs"
   },
   "dependencies": {
     "@sigma/node-image": "^3.0.0",
     "@supabase/supabase-js": "^2.116.0",
     "graphology": "^0.25.4",
     "graphology-types": "^0.24.7",
+    "onnxruntime-web": "^1.30.0",
     "sigma": "^3.0.0"
   },
   "devDependencies": {
