@@ -1099,6 +1099,16 @@ async function bootstrap() {
         display.size = attrs.size + 2;
         display.zIndex = 1;
       }
+
+      // The face under the pointer grows, and comes to the front so it is not
+      // half-covered by whoever it overlaps. Stacks on the selection bump, so
+      // hovering the person you already chose still answers. Applied last for
+      // that reason, and the handlers refresh on enter and leave, which is
+      // what makes the reducer run again.
+      if (selection.hoveredId !== null && nodeId === String(selection.hoveredId)) {
+        display.size = (display.size ?? attrs.size) + 3;
+        display.zIndex = 2;
+      }
       return display;
     });
 
